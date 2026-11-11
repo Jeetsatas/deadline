@@ -9,7 +9,9 @@ import {
   isDueToday,
   isDueTomorrow,
   isSameDay,
+  generateDeadlineMarkdownReport,
 } from './utils';
+import { Deadline } from '@/types';
 
 describe('utils', () => {
   it('combines classes properly using cn()', () => {
@@ -70,5 +72,49 @@ describe('utils', () => {
     const result = formatTimeRemaining(pastDate);
     expect(result.isOverdue).toBe(true);
     expect(result.formatted).toContain('overdue');
+  });
+
+  it('generates a comprehensive Markdown report for a deadline', () => {
+    const testDeadline: Deadline = {
+      id: 'dl_report_test',
+      title: 'Report Test Project',
+      description: 'A test project for report generation',
+      expectedOutput: 'Clean markdown report output',
+      minimumAcceptableOutput: 'Draft report',
+      priority: 'high',
+      status: 'in_progress',
+      deadlineDate: '2026-11-20',
+      deadlineTime: '18:00',
+      dueDateTime: '2026-11-20T18:00:00.000Z',
+      progress: 50,
+      deliverableType: 'software',
+      executionApproach: 'prototype_first',
+      referenceLinks: [{ id: 'ref1', title: 'Docs', url: 'https://docs.example.com', createdAt: '2026-11-01' }],
+      attachments: [],
+      milestones: [
+        {
+          id: 'm1',
+          deadlineId: 'dl_report_test',
+          title: 'Milestone 1',
+          isCompleted: true,
+          order: 1,
+          createdAt: '2026-11-01',
+          updatedAt: '2026-11-01',
+        },
+      ],
+      notes: 'Test execution notes',
+      tags: ['test'],
+      createdAt: '2026-11-01',
+      updatedAt: '2026-11-01',
+    };
+
+    const report = generateDeadlineMarkdownReport(testDeadline);
+    expect(report).toContain('# Project Execution Report: Report Test Project');
+    expect(report).toContain('PROTOTYPE FIRST');
+    expect(report).toContain('Clean markdown report output');
+    expect(report).toContain('Draft report');
+    expect(report).toContain('[x] Milestone 1');
+    expect(report).toContain('Test execution notes');
+    expect(report).toContain('[Docs](https://docs.example.com)');
   });
 });

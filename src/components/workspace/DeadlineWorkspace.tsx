@@ -7,7 +7,7 @@ import { CountdownTimer } from '@/components/ui/CountdownTimer';
 import { ProgressBar } from '@/components/ui/ProgressBar';
 import { executionEngine } from '@/core/execution';
 import { SubmitDeliverableModal } from '@/components/deliverables/SubmitDeliverableModal';
-import { formatDate, formatDateTime } from '@/lib/utils';
+import { formatDate, formatDateTime, generateDeadlineMarkdownReport } from '@/lib/utils';
 import {
   ArrowLeft,
   Calendar,
@@ -31,6 +31,11 @@ import {
   Github,
   UploadCloud,
   FileCode,
+  Download,
+  ChevronUp,
+  ChevronDown,
+  Cpu,
+  Compass,
 } from 'lucide-react';
 
 interface DeadlineWorkspaceProps {
@@ -43,6 +48,7 @@ export const DeadlineWorkspace: React.FC<DeadlineWorkspaceProps> = ({ deadline, 
     toggleMilestone,
     addMilestone,
     deleteMilestone,
+    reorderMilestone,
     updateProgress,
     updateNotes,
     addReferenceLink,
@@ -67,7 +73,7 @@ export const DeadlineWorkspace: React.FC<DeadlineWorkspaceProps> = ({ deadline, 
   // Execution engine analysis
   const executionPlan = executionEngine.analyzeDeadline(deadline);
 
-  // Auto-save notes with 800ms debounce
+  // Auto-save notes with 600ms debounce
   useEffect(() => {
     setNotes(deadline.notes || '');
   }, [deadline.id]);
@@ -111,8 +117,20 @@ export const DeadlineWorkspace: React.FC<DeadlineWorkspaceProps> = ({ deadline, 
     }
   };
 
+  const handleExportReport = () => {
+    const reportMd = generateDeadlineMarkdownReport(deadline);
+    const blob = new Blob([reportMd], { type: 'text/markdown;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `${deadline.title.toLowerCase().replace(/[^a-z0-9]/g, '-')}-execution-report.md`;
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+
   const completedMilestones = deadline.milestones.filter((m) => m.isCompleted).length;
   const isCompleted = deadline.status === 'completed';
+  const approach = deadline.executionApproach || 'prototype_first';
 
   return (
     <div className="space-y-6 max-w-7xl mx-auto pb-12 animate-fade-in text-left">
@@ -123,19 +141,45 @@ export const DeadlineWorkspace: React.FC<DeadlineWorkspaceProps> = ({ deadline, 
             <ArrowLeft className="h-4 w-4 mr-1.5" /> Back to List
           </Button>
           <div className="h-4 w-px bg-border" />
-          <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center gap-2">
             <Badge priority={deadline.priority}>{deadline.priority}</Badge>
             <Badge status={deadline.status}>{deadline.status.replace('_', ' ')}</Badge>
+
+            {/* Execution Approach Badge */}
+            <span className="inline-flex items-center gap-1 font-mono text-[11px] px-2 py-0.5 rounded border border-border bg-secondary text-foreground">
+              {approach === 'prototype_first' ? (
+                <>
+                  <Cpu className="h-3 w-3 text-orange-500" />
+                  <span>Prototype First</span>
+                </>
+              ) : approach === 'guided_execution' ? (
+                <>
+                  <Compass className="h-3 w-3 text-emerald-500" />
+                  <span>Guided Execution</span>
+                </>
+              ) : (
+                <>
+                  <Target className="h-3 w-3 text-blue-500" />
+                  <span>Output Only</span>
+                </>
+              )}
+            </span>
           </div>
         </div>
 
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
+          <Button variant="outline" size="sm" onClick={handleExportReport} title="Export markdown report">
+            <Download className="h-3.5 w-3.5 mr-1.5" /> Export Report (.md)
+          </Button>
+
           <Button variant="outline" size="sm" onClick={() => openCreateModal(deadline)}>
             <Edit2 className="h-3.5 w-3.5 mr-1.5" /> Edit Details
           </Button>
+
           <Button variant="ghost" size="sm" onClick={handleDelete} className="text-red-500 hover:bg-red-500/10">
             <Trash2 className="h-3.5 w-3.5 mr-1.5" /> Delete
           </Button>
+
           {!isCompleted ? (
             <Button variant="primary" size="sm" onClick={() => setIsSubmitModalOpen(true)}>
               <CheckCircle2 className="h-4 w-4 mr-1.5" /> Submit Deliverable
@@ -155,6 +199,8 @@ export const DeadlineWorkspace: React.FC<DeadlineWorkspaceProps> = ({ deadline, 
             <span>PROJECT WORKSPACE</span>
             <span>•</span>
             <span>DUE {formatDate(deadline.deadlineDate)} AT {deadline.deadlineTime}</span>
+            <span>•</span>
+            <span className="capitalize">{deadline.deliverableType.replace('_', ' ')}</span>
           </div>
 
           <h1 className="text-2xl sm:text-3xl font-bold tracking-tight text-foreground">
@@ -191,6 +237,33 @@ export const DeadlineWorkspace: React.FC<DeadlineWorkspaceProps> = ({ deadline, 
         </div>
       </div>
 
+      {/* EXECUTION APPROACH CALLOUT: PROTOTYPE FIRST VS GUIDED VS OUTPUT ONLY */}
+      {approach === 'prototype_first' && !isCompleted && (
+        <div className="p-4 rounded-xl border border-orange-500/30 bg-orange-500/5 flex items-start gap-3 text-xs">
+          <div className="p-2 rounded-lg bg-orange-500/10 text-orange-600 dark:text-orange-400 shrink-0 mt-0.5">
+            <Cpu className="h-5 w-5" />
+          </div>
+          <div className="flex-1">
+            <div className="flex items-center gap-2">
+              <h4 className="font-semibold text-foreground text-sm">
+                Prototype First Execution Active
+              </h4>
+              <Badge className="bg-orange-500/10 text-orange-500 border-orange-500/20" size="sm">
+                Proving Output
+              </Badge>
+            </div>
+            <p className="text-muted-foreground mt-0.5 leading-relaxed">
+              Objective: Build the minimum working prototype before adding bells and whistles. Proving core operations first prevents last-minute zero-output panic.
+            </p>
+            {deadline.selectedPrototypeId && (
+              <p className="text-[11px] font-mono text-primary mt-1">
+                Connected Prototype Blueprint: {deadline.selectedPrototypeId}
+              </p>
+            )}
+          </div>
+        </div>
+      )}
+
       {/* Bottlenecks Warning Banner (If Any) */}
       {executionPlan.bottlenecks.length > 0 && !isCompleted && (
         <div className="space-y-2">
@@ -213,44 +286,50 @@ export const DeadlineWorkspace: React.FC<DeadlineWorkspaceProps> = ({ deadline, 
         </div>
       )}
 
-      {/* CORE PHILOSOPHY HIGHLIGHT: Target Deliverable & Minimum Acceptable Output */}
+      {/* CORE PHILOSOPHY HIGHLIGHT: Target Deliverable (VISUAL FOCAL POINT) & Minimum Acceptable Output */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-        {/* Required Expected Output */}
-        <div className="p-4 rounded-xl border border-primary/30 bg-gradient-to-br from-orange-500/5 to-transparent shadow-sm relative overflow-hidden">
+        {/* Required Expected Output (Visual Focal Point) */}
+        <div className="p-5 rounded-xl border-2 border-primary/40 bg-gradient-to-br from-orange-500/10 via-card to-card shadow-md relative overflow-hidden">
           <div className="flex items-center justify-between mb-2">
             <div className="flex items-center gap-2 text-xs font-bold text-primary uppercase tracking-wider">
               <Target className="h-4 w-4" />
               <span>Target Output (The Deliverable)</span>
             </div>
-            <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-primary/10 text-primary font-semibold">
+            <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-primary text-white font-bold">
               PRIMARY GOAL
             </span>
           </div>
-          <p className="text-sm font-semibold text-foreground leading-relaxed">
+
+          <p className="text-base sm:text-lg font-bold text-foreground leading-snug">
             {deadline.expectedOutput}
           </p>
-          <p className="text-[11px] text-muted-foreground mt-2">
+
+          <p className="text-xs text-muted-foreground mt-3 pt-2 border-t border-border/50">
             "The output matters more than the activity." Keep execution focused on producing this specific deliverable.
           </p>
         </div>
 
-        {/* Minimum Acceptable Output (MVP) */}
-        <div className="p-4 rounded-xl border border-border bg-card shadow-sm">
-          <div className="flex items-center justify-between mb-2">
-            <div className="flex items-center gap-2 text-xs font-bold text-muted-foreground uppercase tracking-wider">
-              <Sparkles className="h-4 w-4 text-amber-500" />
-              <span>Minimum Acceptable Output (MVP Scope)</span>
+        {/* Minimum Acceptable Output (MVP Fallback) */}
+        <div className="p-5 rounded-xl border border-border bg-card shadow-sm flex flex-col justify-between">
+          <div>
+            <div className="flex items-center justify-between mb-2">
+              <div className="flex items-center gap-2 text-xs font-bold text-muted-foreground uppercase tracking-wider">
+                <Sparkles className="h-4 w-4 text-amber-500" />
+                <span>Minimum Acceptable Output (MVP Fallback)</span>
+              </div>
+              <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-secondary text-muted-foreground font-medium">
+                FALLBACK
+              </span>
             </div>
-            <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-secondary text-muted-foreground">
-              FALLBACK
-            </span>
+
+            <p className="text-sm font-semibold text-foreground leading-relaxed">
+              {deadline.minimumAcceptableOutput ||
+                'Not defined yet. In high-pressure moments, define the bare minimum deliverable required to avoid total failure.'}
+            </p>
           </div>
-          <p className="text-sm text-foreground leading-relaxed font-medium">
-            {deadline.minimumAcceptableOutput ||
-              'Not defined yet. In high-pressure moments, define the bare minimum deliverable required to avoid total failure.'}
-          </p>
-          <p className="text-[11px] text-muted-foreground mt-2">
-            If time runs out, deliver the MVP rather than failing to submit anything.
+
+          <p className="text-xs text-muted-foreground mt-3 pt-2 border-t border-border/50">
+            If time runs out, deliver this MVP rather than failing to submit anything.
           </p>
         </div>
       </div>
@@ -297,7 +376,7 @@ export const DeadlineWorkspace: React.FC<DeadlineWorkspaceProps> = ({ deadline, 
             </div>
           </div>
 
-          {/* Milestones Checklist */}
+          {/* Milestones Checklist with Reordering */}
           <div className="p-5 rounded-xl border border-border bg-card shadow-sm space-y-4">
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-2">
@@ -322,7 +401,7 @@ export const DeadlineWorkspace: React.FC<DeadlineWorkspaceProps> = ({ deadline, 
                 <div className="flex flex-col sm:flex-row gap-2">
                   <input
                     type="text"
-                    placeholder="Milestone title (e.g., Deploy calculator to Vercel)"
+                    placeholder="Milestone title (e.g. Deploy calculator to Vercel)"
                     value={newMilestoneTitle}
                     onChange={(e) => setNewMilestoneTitle(e.target.value)}
                     className="flex-1 h-9 rounded-md border border-input bg-background px-3 text-xs text-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
@@ -364,7 +443,7 @@ export const DeadlineWorkspace: React.FC<DeadlineWorkspaceProps> = ({ deadline, 
               <div className="space-y-2">
                 {deadline.milestones
                   .sort((a, b) => a.order - b.order)
-                  .map((m) => (
+                  .map((m, idx) => (
                     <div
                       key={m.id}
                       onClick={() => toggleMilestone(deadline.id, m.id)}
@@ -402,17 +481,46 @@ export const DeadlineWorkspace: React.FC<DeadlineWorkspaceProps> = ({ deadline, 
                         </div>
                       </div>
 
-                      <button
-                        type="button"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          deleteMilestone(deadline.id, m.id);
-                        }}
-                        className="opacity-0 group-hover:opacity-100 p-1 text-muted-foreground hover:text-red-500 transition-opacity"
-                        aria-label="Delete milestone"
-                      >
-                        <Trash2 className="h-3.5 w-3.5" />
-                      </button>
+                      {/* Milestone Actions: Reorder up/down and Delete */}
+                      <div className="flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity">
+                        <button
+                          type="button"
+                          disabled={idx === 0}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            reorderMilestone(deadline.id, m.id, 'up');
+                          }}
+                          className="p-1 text-muted-foreground hover:text-foreground disabled:opacity-30 disabled:pointer-events-none"
+                          title="Move milestone up"
+                        >
+                          <ChevronUp className="h-3.5 w-3.5" />
+                        </button>
+
+                        <button
+                          type="button"
+                          disabled={idx === deadline.milestones.length - 1}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            reorderMilestone(deadline.id, m.id, 'down');
+                          }}
+                          className="p-1 text-muted-foreground hover:text-foreground disabled:opacity-30 disabled:pointer-events-none"
+                          title="Move milestone down"
+                        >
+                          <ChevronDown className="h-3.5 w-3.5" />
+                        </button>
+
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            deleteMilestone(deadline.id, m.id);
+                          }}
+                          className="p-1 text-muted-foreground hover:text-red-500"
+                          title="Delete milestone"
+                        >
+                          <Trash2 className="h-3.5 w-3.5" />
+                        </button>
+                      </div>
                     </div>
                   ))}
               </div>
@@ -456,7 +564,7 @@ export const DeadlineWorkspace: React.FC<DeadlineWorkspaceProps> = ({ deadline, 
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-2">
                 <ShieldCheck className="h-4 w-4 text-emerald-500" />
-                <h3 className="text-sm font-semibold tracking-tight">Final Deliverable</h3>
+                <h3 className="text-sm font-semibold tracking-tight">Final Deliverable Submission</h3>
               </div>
               {deadline.finalDeliverable ? (
                 <Badge className="bg-emerald-500/10 text-emerald-500 border-emerald-500/20">
@@ -464,7 +572,7 @@ export const DeadlineWorkspace: React.FC<DeadlineWorkspaceProps> = ({ deadline, 
                 </Badge>
               ) : (
                 <Badge className="bg-orange-500/10 text-orange-600 dark:text-orange-400 border-orange-500/20">
-                  Pending Submission
+                  Pending Output
                 </Badge>
               )}
             </div>
@@ -530,9 +638,9 @@ export const DeadlineWorkspace: React.FC<DeadlineWorkspaceProps> = ({ deadline, 
             ) : (
               <div className="p-4 rounded-lg bg-secondary/50 border border-border text-center space-y-2">
                 <Target className="h-8 w-8 text-primary mx-auto opacity-80" />
-                <h4 className="text-xs font-semibold text-foreground">Ready to deliver?</h4>
+                <h4 className="text-xs font-semibold text-foreground">Where will you submit this deliverable?</h4>
                 <p className="text-[11px] text-muted-foreground">
-                  Record the final repository, production URL, or document link to mark this project completed.
+                  Record the final repository, production URL, document link, or file archive to conclude this project.
                 </p>
                 <Button
                   variant="primary"
@@ -567,7 +675,7 @@ export const DeadlineWorkspace: React.FC<DeadlineWorkspaceProps> = ({ deadline, 
               <form onSubmit={handleCreateLink} className="p-3 rounded-lg bg-secondary/60 border border-border space-y-2 text-xs">
                 <input
                   type="text"
-                  placeholder="Link Title (e.g., API Specs)"
+                  placeholder="Link Title (e.g. API Specs)"
                   value={linkTitle}
                   onChange={(e) => setLinkTitle(e.target.value)}
                   className="w-full h-8 rounded border border-input bg-background px-2 text-xs"

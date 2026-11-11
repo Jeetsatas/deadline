@@ -30,7 +30,8 @@ export const initialDeadlines: Deadline[] = [
     deadlineTime: '18:00',
     dueDateTime: createIsoFromLocal('2026-11-12', '18:00'),
     progress: 75,
-    deliverableType: 'prototype',
+    deliverableType: 'software',
+    executionApproach: 'prototype_first',
     referenceLinks: [
       {
         id: 'ref_1',
@@ -124,6 +125,7 @@ export const initialDeadlines: Deadline[] = [
     dueDateTime: createIsoFromLocal('2026-11-15', '23:59'),
     progress: 50,
     deliverableType: 'research_paper',
+    executionApproach: 'guided_execution',
     referenceLinks: [
       {
         id: 'ref_3',
@@ -197,6 +199,7 @@ export const initialDeadlines: Deadline[] = [
     dueDateTime: createIsoFromLocal('2026-11-18', '15:00'),
     progress: 35,
     deliverableType: 'presentation',
+    executionApproach: 'prototype_first',
     referenceLinks: [
       {
         id: 'ref_4',
@@ -259,6 +262,7 @@ export const initialDeadlines: Deadline[] = [
     dueDateTime: createIsoFromLocal('2026-11-11', '23:00'),
     progress: 90,
     deliverableType: 'software',
+    executionApproach: 'output_only',
     referenceLinks: [
       {
         id: 'ref_5',
@@ -317,7 +321,8 @@ export const initialDeadlines: Deadline[] = [
     deadlineTime: '17:00',
     dueDateTime: createIsoFromLocal('2026-11-10', '17:00'),
     progress: 100,
-    deliverableType: 'prototype',
+    deliverableType: 'software',
+    executionApproach: 'prototype_first',
     referenceLinks: [
       {
         id: 'ref_6',
@@ -392,6 +397,7 @@ export const initialDeadlines: Deadline[] = [
     dueDateTime: createIsoFromLocal('2026-11-11', '12:00'),
     progress: 60,
     deliverableType: 'software',
+    executionApproach: 'output_only',
     referenceLinks: [
       {
         id: 'ref_7',

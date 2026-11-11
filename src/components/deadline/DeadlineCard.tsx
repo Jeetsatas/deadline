@@ -102,6 +102,15 @@ export const DeadlineCard: React.FC<DeadlineCardProps> = ({
           <div className="flex flex-wrap items-center gap-2">
             <Badge priority={deadline.priority}>{deadline.priority}</Badge>
             <Badge status={deadline.status}>{deadline.status.replace('_', ' ')}</Badge>
+            {deadline.executionApproach && (
+              <span className="font-mono text-[10px] px-1.5 py-0.5 rounded border border-border bg-secondary text-muted-foreground">
+                {deadline.executionApproach === 'prototype_first'
+                  ? '⚡ Prototype First'
+                  : deadline.executionApproach === 'guided_execution'
+                  ? '🧭 Guided'
+                  : '🎯 Output Only'}
+              </span>
+            )}
             {deadline.finalDeliverable && (
               <Badge className="bg-emerald-500/10 text-emerald-500 border-emerald-500/20">
                 <CheckCircle2 className="h-3 w-3" /> Deliverable Submitted

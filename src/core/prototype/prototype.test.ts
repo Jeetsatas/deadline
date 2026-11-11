@@ -22,3 +22,4 @@ describe('PrototypeRegistry', () => {
     expect(prototypeRegistry.getCategory('unknown_xyz')).toBeUndefined();
   });
 });
+

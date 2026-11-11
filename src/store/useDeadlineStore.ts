@@ -12,6 +12,7 @@ import {
 import { storageService } from '@/services/storage';
 import { executionEngine } from '@/core/execution';
 import { isDueToday, isDueTomorrow, createIsoFromLocal } from '@/lib/utils';
+import { playMilestoneChime, playDeliverableChime } from '@/lib/audio';
 
 export type NavigationTab =
   | 'overview'
@@ -62,6 +63,7 @@ interface DeadlineStoreState {
   toggleMilestone: (deadlineId: string, milestoneId: string) => Promise<void>;
   addMilestone: (deadlineId: string, title: string, targetDate?: string) => Promise<void>;
   deleteMilestone: (deadlineId: string, milestoneId: string) => Promise<void>;
+  reorderMilestone: (deadlineId: string, milestoneId: string, direction: 'up' | 'down') => Promise<void>;
   updateProgress: (deadlineId: string, progress: number) => Promise<void>;
   updateNotes: (deadlineId: string, notes: string) => Promise<void>;
   addReferenceLink: (deadlineId: string, link: Omit<ReferenceLink, 'id' | 'createdAt'>) => Promise<void>;
@@ -352,6 +354,10 @@ export const useDeadlineStore = create<DeadlineStoreState>((set, get) => ({
       storageService.getActivities(),
     ]);
 
+    if (becameCompleted && get().user?.preferences?.soundEnabled !== false) {
+      playMilestoneChime();
+    }
+
     set({ deadlines: updatedDeadlines, activities: updatedActivities });
   },
 
@@ -404,6 +410,36 @@ export const useDeadlineStore = create<DeadlineStoreState>((set, get) => ({
     ]);
 
     set({ deadlines: updatedDeadlines, activities: updatedActivities });
+  },
+
+  reorderMilestone: async (deadlineId, milestoneId, direction) => {
+    const target = get().deadlines.find((d) => d.id === deadlineId);
+    if (!target) return;
+
+    const list = [...target.milestones].sort((a, b) => a.order - b.order);
+    const index = list.findIndex((m) => m.id === milestoneId);
+    if (index === -1) return;
+
+    if (direction === 'up' && index > 0) {
+      const prev = list[index - 1];
+      const curr = list[index];
+      const tempOrder = prev.order;
+      prev.order = curr.order;
+      curr.order = tempOrder;
+    } else if (direction === 'down' && index < list.length - 1) {
+      const next = list[index + 1];
+      const curr = list[index];
+      const tempOrder = next.order;
+      next.order = curr.order;
+      curr.order = tempOrder;
+    } else {
+      return;
+    }
+
+    list.sort((a, b) => a.order - b.order);
+    await storageService.updateDeadline(deadlineId, { milestones: list });
+    const updatedDeadlines = await storageService.getDeadlines();
+    set({ deadlines: updatedDeadlines });
   },
 
   updateProgress: async (deadlineId, progress) => {
@@ -505,6 +541,10 @@ export const useDeadlineStore = create<DeadlineStoreState>((set, get) => ({
       storageService.getDeadlines(),
       storageService.getActivities(),
     ]);
+
+    if (get().user?.preferences?.soundEnabled !== false) {
+      playDeliverableChime();
+    }
 
     set({ deadlines: updatedDeadlines, activities: updatedActivities });
   },

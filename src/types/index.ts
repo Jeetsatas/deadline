@@ -13,6 +13,8 @@ export type DeliverableType =
   | 'design'
   | 'other';
 
+export type ExecutionApproach = 'output_only' | 'prototype_first' | 'guided_execution';
+
 export type SubmissionFormat = 'url' | 'repository' | 'file_ref' | 'preview_embed' | 'document';
 
 export interface User {
@@ -113,6 +115,9 @@ export interface Deadline {
   dueDateTime: string; // Combined ISO string
   progress: number; // 0 - 100
   deliverableType: DeliverableType;
+  executionApproach?: ExecutionApproach; // Output Only, Prototype First, Guided Execution
+  selectedPrototypeId?: string; // Optional identifier from prototype registry
+  prototypeConfig?: Record<string, unknown>; // Optional prototype configuration
   referenceLinks: ReferenceLink[];
   attachments: Attachment[];
   milestones: Milestone[];
@@ -141,4 +146,3 @@ export interface DashboardStats {
   overdue: number;
   deliveryRate: number; // %
 }
-

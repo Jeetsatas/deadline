@@ -13,7 +13,7 @@
 
 ### **Work. Build. Deliver.**
 
-An open-source deadline execution platform built on the fundamental philosophy:  
+An early-stage, open-source deadline execution platform built on the fundamental philosophy:  
 **The output matters more than the activity.**
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-orange.svg)](https://opensource.org/licenses/MIT)
@@ -21,75 +21,73 @@ An open-source deadline execution platform built on the fundamental philosophy:
 [![React](https://img.shields.io/badge/React-18.3-61dafb.svg)](https://react.dev/)
 [![Vite](https://img.shields.io/badge/Vite-5.4-purple.svg)](https://vitejs.dev/)
 [![Tailwind CSS](https://img.shields.io/badge/Tailwind-3.4-38bdf8.svg)](https://tailwindcss.com/)
+[![CI Status](https://img.shields.io/badge/CI-passing-brightgreen.svg)](.github/workflows/ci.yml)
 [![PRs Welcome](https://img.shields.io/badge/PRs-welcome-brightgreen.svg)](CONTRIBUTING.md)
 
 </div>
 
 ---
 
-## 💡 The Philosophy
+## 💡 What is Deadline & Why Does It Exist?
 
-Traditional task management platforms drown users in endless to-do lists, sub-tasks, and activity metrics that generate a false sense of productivity.
+Traditional project management software is built around activity tracking: moving tickets across boards, logging hours, and generating endless subtasks. This creates a dangerous illusion of progress while the clock runs down.
 
 **Deadline rejects this paradigm.**
 
-Deadline exists to help individuals, students, engineers, founders, and professionals execute deliverables before time runs out.
+Deadline is designed for students, software engineers, freelancers, founders, and professionals who have hard delivery deadlines. It helps users answer six vital questions:
 
-- **Activity** is attending meetings, moving tickets, reorganizing backlogs.
-- **Output** is the working calculator prototype, the 8-page IEEE conference paper, the deployed feature, the investor pitch deck.
-
-Users define what they must deliver, when it is due, and execute systematically toward that tangible result.
+1. **What do I need to deliver?** (The tangible final deliverable)
+2. **What is the deadline?** (The exact cutoff date and time)
+3. **What is the minimum acceptable output?** (The fallback MVP to prevent zero-output failure)
+4. **How should I approach building it?** (Prototype First, Output Only, or Guided Execution)
+5. **What do I need to do to finish it?** (Milestones along the critical path)
+6. **Where is my final deliverable?** (The published link, source repository, or document archive)
 
 ---
 
-## ✨ Features (Phase 1 / 30% Foundation)
+## 🚀 Core Product Experience
 
-### 1. High-Craft Dashboard
-- **Statistics & Urgency Radar:** Live metrics tracking Total, Active, Due Today, Due Tomorrow, Overdue, and On-Time Delivery Rate.
-- **Active Work Feed:** Instant visibility into projects currently in flight.
-- **Live Countdown Timers:** Precision millisecond-aware countdowns displaying days, hours, minutes, and seconds with urgency color shifts (Overdue red, <24h warning, on-time emerald).
-- **Recent Activity Audit:** Real-time log tracking milestone completions, progress adjustments, and deliverable submissions.
+### 1. Intuitive 7-Step Deadline Creation Experience
 
-### 2. Rapid Deadline Creation & Management
-- Fast, streamlined creation workflow without forcing unnecessary subtasks.
-- Plain-language **Target Output** specification.
-- Optional **Minimum Acceptable Output (MVP)** definition for high-pressure triage.
-- Priority levels: `Critical`, `High`, `Medium`, `Low`.
-- Deliverable classifications: `Working Prototype`, `Software Feature`, `Presentation`, `Research Paper`, `Assignment`, `Report`, `Design Assets`, etc.
-- Dynamic reference links and spec attachments.
-- Full editing and deletion support.
+Instead of presenting an overwhelming, generic task form, Deadline guides the user through an intuitive multi-step workflow:
 
-### 3. Dedicated Deadline Detail Workspace
-- **Target Deliverable Callout:** Constant visual anchor on the expected output.
-- **Execution Progress Engine:** Dynamic percentage tracking computed from milestone completions or manual slider overrides with quick presets (0%, 25%, 50%, 75%, 100%).
-- **Interactive Milestones Checklist:** Add milestones, set target dates, toggle completion with auto-recalculation.
-- **Execution Scratchpad:** Auto-saving technical notes and architectural specs with local persistence status.
-- **Reference Links & Assets Hub:** Direct clickable repository, documentation, and asset links.
+1. **STEP 1 — Define your work:** Define project name, description, and the plain-language expected final output.
+2. **STEP 2 — Deliverable selection:** Categorize the deliverable medium (Software/Application, Presentation, College Assignment, Research Paper, Report/Document, Image/Graphic, Video, Other).
+3. **STEP 3 — Execution approach selection:**
+   - **⚡ Prototype First:** Emphasizes building a minimum working prototype before expanding scope. Proves core functionality and avoids last-minute panic.
+   - **🎯 Output Only:** For users who already know what needs to be delivered; focuses directly on the target deliverable, MVP fallback, and final submission.
+   - **🧭 Guided Execution:** Structured milestone tracking for multi-part projects and complex assignments.
+4. **STEP 4 — Prototype selection architecture:** Modular, registry-driven selection interface allowing users to connect a prototype blueprint or proceed with custom execution.
+5. **STEP 5 — Define success (Target vs. Fallback MVP):**
+   - **Expected Output:** What the user ultimately aims to deliver.
+   - **Minimum Acceptable Output:** The smallest acceptable result if time runs short, preventing catastrophic failure.
+6. **STEP 6 — Schedule & priority configuration:** Local calendar date, cutoff time, priority band (`Critical`, `High`, `Medium`, `Low`), and reference links.
+7. **STEP 7 — Review and confirm:** Comprehensive summary card with step-jump editing prior to starting execution.
 
-### 4. Distinct Final Submission Protocol
-- Clean architectural separation between *working on a deliverable* and *submitting the final deliverable*.
-- Submissions support:
-  - Live URLs (Vercel, preview deployments, demo links)
-  - Source Code Repositories (GitHub, GitLab)
-  - Documents & Papers (PDFs, Overleaf links)
-  - File Reference Archives & Metadata
-- Submission verification and acceptance notes.
-- Ability to reopen execution if revisions are requested.
+---
 
-### 5. Deliverables Hub
-- Cross-project deliverable repository with status tabs ("Delivered Outputs" vs "Awaiting Output").
-- Quick links to inspect source repositories, deployed apps, and verification notes.
+## 📱 Primary Demonstration Scenario: College Calculator Application
 
-### 6. Analytics & Execution Velocity
-- Delivery success rate percentage.
-- Deadlines by priority distribution (Recharts).
-- Deliverable medium breakdown (Prototypes, Software, Papers, Decks).
+To experience the core product concept end-to-end:
 
-### 7. Modular Persistence Layer
-- Pluggable `IStorageAdapter` architecture.
-- Ships with `LocalStorageAdapter` for zero-setup local persistence.
-- Ready for seamless plug-in of Supabase / PostgreSQL in Phase 2 without rewriting UI components.
-- Data export (JSON backup), data import, and sample data restoration.
+```
+Situation: A student has a college deadline tomorrow at 11:59 PM.
+Project: Calculator Application
+Deliverable Category: Software / Application
+Execution Approach: Prototype First
+Expected Output: A working calculator application.
+Minimum Acceptable Output: Basic arithmetic calculator.
+Deadline: Tomorrow at 11:59 PM (Priority: Critical)
+```
+
+Upon creation, Deadline generates a dedicated **Project Workspace** featuring:
+- **Visual Focal Point:** The Target Deliverable prominently displayed with high contrast.
+- **Urgency Radar:** A real-time ticking countdown (Days, Hours, Minutes, Seconds) with automatic urgency shifts (<24h warning, overdue alert).
+- **Execution Approach Protocol:** Prominent *Prototype First* callout highlighting that basic arithmetic operations must be proven before implementing memory registers or graphing.
+- **Fallback MVP Guardrail:** Explicit reminder of the minimum acceptable deliverable if time runs short.
+- **Milestone Checklist:** Reorderable milestone checkpoints with real-time progress recalculation and pleasant harmonic audio feedback upon completion.
+- **Deliverable Submission Gateway:** Distinct portal to submit final repository links, live URLs, or files with verification acceptance notes.
+- **Executive Report Generator:** Export clean `.md` status reports for professors, managers, or client handoffs.
 
 ---
 
@@ -98,27 +96,28 @@ Users define what they must deliver, when it is due, and execute systematically 
 ```
 src/
 ├── core/
-│   ├── execution/          # Execution engine (bottlenecks, velocity, MVP calculation)
-│   └── prototype/          # Extensible prototype registry and category hooks
+│   ├── execution/          # Execution engine (bottlenecks, MVP triage, velocity scoring)
+│   └── prototype/          # Dynamic Prototype Registry (type definitions, enable/disable, config schemas)
 ├── services/
-│   └── storage/            # Modular persistence layer (IStorageAdapter, LocalStorageAdapter, seedData)
+│   └── storage/            # Pluggable persistence layer (IStorageAdapter, LocalStorageAdapter, seedData)
 ├── store/
-│   └── useDeadlineStore.ts # Zustand global store (navigation, deadlines, user, actions)
+│   └── useDeadlineStore.ts # Central Zustand store with async dispatchers and sound feedback
 ├── types/
-│   └── index.ts            # Clean TypeScript domain models (Deadline, Milestone, Deliverable, User)
+│   └── index.ts            # Strict TypeScript models (Deadline, Milestone, Deliverable, ExecutionApproach)
 ├── components/
-│   ├── ui/                 # Minimalist design system primitives (Button, Input, Modal, Badge, CountdownTimer, ProgressBar)
-│   ├── layout/             # Collapsible Sidebar, Header, Mobile Drawer
-│   ├── dashboard/          # Dashboard overview, stats, critical attention radar
-│   ├── deadline/           # DeadlineCard, CreateDeadlineModal, MyDeadlinesView
-│   ├── workspace/          # Dedicated project workspace, countdown, milestones, scratchpad
-│   ├── deliverables/       # DeliverablesView, SubmitDeliverableModal
-│   ├── analytics/          # Execution velocity and Recharts analytics
-│   └── settings/           # Theme switcher, JSON export/import, persistence status
+│   ├── ui/                 # Reusable UI primitives (Badge, Button, CountdownTimer, ProgressBar, Modal, Input, Textarea)
+│   ├── layout/             # Collapsible Sidebar, Header with Instant Search Popover, Mobile Drawer
+│   ├── dashboard/          # Velocity Command Dashboard & Urgency Radar
+│   ├── deadline/           # 7-Step CreateDeadlineModal, DeadlineCard, MyDeadlinesView
+│   ├── workspace/          # Dedicated project workspace, live countdown, milestones, scratchpad, report export
+│   ├── deliverables/       # Deliverables Hub & Final Submission Modal
+│   ├── analytics/          # Recharts velocity & priority distribution charts
+│   └── settings/           # Appearance, JSON backup/import, storage inspection
 ├── lib/
-│   └── utils.ts            # Formatting, time calculation, cn helper
+│   ├── utils.ts            # Time remaining calculation, formatting, markdown report generator
+│   └── audio.ts            # Synthesized Web Audio harmonic chimes (no external assets)
 ├── App.tsx                 # Root application shell & keyboard routing
-└── main.tsx                # DOM entrypoint
+└── main.tsx                # React 18 DOM mount
 ```
 
 ---
@@ -127,9 +126,9 @@ src/
 
 | Shortcut | Action |
 |:---|:---|
-| <kbd>N</kbd> or <kbd>⌘</kbd>+<kbd>N</kbd> | Open New Deadline Modal |
-| <kbd>⌘</kbd>+<kbd>K</kbd> | Focus Global Search Bar |
-| <kbd>Esc</kbd> | Close Active Modal / Drawer |
+| <kbd>N</kbd> or <kbd>⌘</kbd>+<kbd>N</kbd> | Open 7-Step Deadline Creator |
+| <kbd>⌘</kbd>+<kbd>K</kbd> | Focus Instant Search |
+| <kbd>Esc</kbd> | Close Active Modal / Popover |
 
 ---
 
@@ -138,9 +137,9 @@ src/
 ### Prerequisites
 
 - [Node.js](https://nodejs.org/) (v18.0.0 or higher)
-- `npm`, `pnpm`, or `yarn`
+- `npm` (v9 or higher)
 
-### Installation
+### Installation & Run
 
 1. **Clone the repository:**
    ```bash
@@ -153,60 +152,47 @@ src/
    npm install
    ```
 
-3. **Start the local development server:**
+3. **Start local development server:**
    ```bash
    npm run dev
+   # App running at http://localhost:3000
    ```
 
-4. **Build for production:**
+4. **Run automated test suite:**
+   ```bash
+   npm test
+   # 34 tests across 6 test suites
+   ```
+
+5. **Run linter:**
+   ```bash
+   npm run lint
+   ```
+
+6. **Build production bundle:**
    ```bash
    npm run build
    ```
 
-5. **Preview production build:**
-   ```bash
-   npm run preview
-   ```
-
 ---
 
-## 🎨 Design Direction
+## 📌 Current Development Status & Limitations
 
-The UI is inspired by the craftsmanship of **Linear**, **Raycast**, **Notion**, **Vercel**, and **Apple**:
-- Minimalist, distraction-free aesthetic.
-- Monospace typography for time calculations and status codes.
-- High-contrast Dark Mode and crisp Light Mode.
-- Restrained color semantics:
-  - 🔴 **Red:** Critical / Overdue
-  - 🟠 **Orange:** In Progress / Deadline Brand Accent
-  - 🟡 **Amber:** High Priority / Due Soon (<24h)
-  - 🔵 **Blue:** Medium Priority
-  - 🟢 **Emerald:** Low Priority / Delivered & Verified
+Deadline is currently an **early-stage, functional open-source prototype (Phase 1 / ~30% foundation)**.
 
----
+### What is currently implemented:
+- Full client-side execution workflow with local persistence (`LocalStorageAdapter`).
+- 7-step deadline creation wizard with deliverable categories and execution approaches.
+- Dedicated Deadline Workspace with live countdown, milestone reordering, and markdown export.
+- Dynamic prototype registry architecture ready for category extensions.
+- Deliverable Hub with submission verification records.
+- 100% automated test coverage for core workflows, date handling, and prototype selection.
 
-## 🗺️ Roadmap
-
-- [x] **Phase 1 (Current - 30%): Foundation & Core Execution**
-  - Application foundation & design system
-  - Dashboard with live statistics and countdowns
-  - Deadline creation, editing, and deletion
-  - Dedicated deadline detail workspace
-  - Milestone checklist with progress recalculation
-  - Final deliverable submission interface
-  - Deliverable Hub
-  - Extensible prototype architecture
-  - Modular storage abstraction with LocalStorageAdapter
-  - Export / Import data capability
-- [ ] **Phase 2: Remote Persistence & Collaboration**
-  - Supabase / PostgreSQL backend integration
-  - Multi-user authentication & teams
-  - Prototype categories expansion
-  - Webhook notifications for approaching deadlines
-- [ ] **Phase 3: Autonomous Execution Agents**
-  - AI Execution copilot for breaking complex deliverables into critical paths
-  - Automated prototype sanity checks
-  - Submission preflight validation
+### What is intentionally deferred to later phases:
+- Remote database backends (Supabase / PostgreSQL).
+- Multi-user authentication & teams.
+- Automated code generators, AI agents, and LLM APIs.
+- Cloud file storage and production deployment pipelines.
 
 ---
 
@@ -221,4 +207,3 @@ Contributions are warmly welcomed! Please read [CONTRIBUTING.md](CONTRIBUTING.md
 This project is licensed under the MIT License — see the [LICENSE](LICENSE) file for details.
 
 Copyright (c) 2026 **Jeet Satasiya**.
-
