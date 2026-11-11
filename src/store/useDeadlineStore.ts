@@ -11,6 +11,7 @@ import {
 } from '@/types';
 import { storageService } from '@/services/storage';
 import { executionEngine } from '@/core/execution';
+import { isDueToday, isDueTomorrow, createIsoFromLocal } from '@/lib/utils';
 
 export type NavigationTab =
   | 'overview'
@@ -107,11 +108,8 @@ export const useDeadlineStore = create<DeadlineStoreState>((set, get) => ({
   stats: () => {
     const { deadlines } = get();
     const now = new Date();
-    const todayStr = now.toISOString().split('T')[0];
-    const tomorrow = new Date(now.getTime() + 24 * 60 * 60 * 1000);
-    const tomorrowStr = tomorrow.toISOString().split('T')[0];
 
-    let total = deadlines.length;
+    const total = deadlines.length;
     let active = 0;
     let dueToday = 0;
     let dueTomorrow = 0;
@@ -131,10 +129,10 @@ export const useDeadlineStore = create<DeadlineStoreState>((set, get) => ({
         }
       }
 
-      if (d.deadlineDate === todayStr && !isDone) {
+      if (!isDone && isDueToday(d.dueDateTime, now)) {
         dueToday++;
       }
-      if (d.deadlineDate === tomorrowStr && !isDone) {
+      if (!isDone && isDueTomorrow(d.dueDateTime, now)) {
         dueTomorrow++;
       }
     }
@@ -199,7 +197,7 @@ export const useDeadlineStore = create<DeadlineStoreState>((set, get) => ({
   createDeadline: async (deadlineData) => {
     const nowIso = new Date().toISOString();
     const newId = `dl_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`;
-    const dueDateTime = `${deadlineData.deadlineDate}T${deadlineData.deadlineTime}:00.000Z`;
+    const dueDateTime = createIsoFromLocal(deadlineData.deadlineDate, deadlineData.deadlineTime);
 
     const newDeadline: Deadline = {
       ...deadlineData,
@@ -250,7 +248,7 @@ export const useDeadlineStore = create<DeadlineStoreState>((set, get) => ({
     if (updates.deadlineDate || updates.deadlineTime) {
       const date = updates.deadlineDate || target.deadlineDate;
       const time = updates.deadlineTime || target.deadlineTime;
-      updatedDueDateTime = `${date}T${time}:00.000Z`;
+      updatedDueDateTime = createIsoFromLocal(date, time);
     }
 
     const payload = {

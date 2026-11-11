@@ -18,3 +18,4 @@ Please include:
 We kindly request that you do not disclose the vulnerability publicly until we have had an opportunity to address it and publish a fix.
 
 We will acknowledge receipt of your vulnerability report within 48 hours and work with you to coordinate a resolution.
+

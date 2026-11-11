@@ -50,3 +50,4 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Open Source Standards:**
   - MIT License (Copyright (c) 2026 Jeet Satasiya).
   - README.md, CONTRIBUTING.md, CODE_OF_CONDUCT.md, SECURITY.md, .env.example, .gitignore.
+

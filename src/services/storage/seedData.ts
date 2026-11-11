@@ -1,4 +1,5 @@
 import { Deadline, Activity, User } from '@/types';
+import { createIsoFromLocal } from '@/lib/utils';
 
 export const initialUser: User = {
   id: 'usr_jeet_001',
@@ -27,7 +28,7 @@ export const initialDeadlines: Deadline[] = [
     status: 'in_progress',
     deadlineDate: '2026-11-12',
     deadlineTime: '18:00',
-    dueDateTime: '2026-11-12T18:00:00.000Z',
+    dueDateTime: createIsoFromLocal('2026-11-12', '18:00'),
     progress: 75,
     deliverableType: 'prototype',
     referenceLinks: [
@@ -120,7 +121,7 @@ export const initialDeadlines: Deadline[] = [
     status: 'in_progress',
     deadlineDate: '2026-11-15',
     deadlineTime: '23:59',
-    dueDateTime: '2026-11-15T23:59:00.000Z',
+    dueDateTime: createIsoFromLocal('2026-11-15', '23:59'),
     progress: 50,
     deliverableType: 'research_paper',
     referenceLinks: [
@@ -193,7 +194,7 @@ export const initialDeadlines: Deadline[] = [
     status: 'in_progress',
     deadlineDate: '2026-11-18',
     deadlineTime: '15:00',
-    dueDateTime: '2026-11-18T15:00:00.000Z',
+    dueDateTime: createIsoFromLocal('2026-11-18', '15:00'),
     progress: 35,
     deliverableType: 'presentation',
     referenceLinks: [
@@ -255,7 +256,7 @@ export const initialDeadlines: Deadline[] = [
     status: 'in_progress',
     deadlineDate: '2026-11-11',
     deadlineTime: '23:00',
-    dueDateTime: '2026-11-11T23:00:00.000Z', // Today!
+    dueDateTime: createIsoFromLocal('2026-11-11', '23:00'),
     progress: 90,
     deliverableType: 'software',
     referenceLinks: [
@@ -314,7 +315,7 @@ export const initialDeadlines: Deadline[] = [
     status: 'completed',
     deadlineDate: '2026-11-10',
     deadlineTime: '17:00',
-    dueDateTime: '2026-11-10T17:00:00.000Z',
+    dueDateTime: createIsoFromLocal('2026-11-10', '17:00'),
     progress: 100,
     deliverableType: 'prototype',
     referenceLinks: [
@@ -388,7 +389,7 @@ export const initialDeadlines: Deadline[] = [
     status: 'in_progress',
     deadlineDate: '2026-11-11',
     deadlineTime: '12:00',
-    dueDateTime: '2026-11-11T12:00:00.000Z', // Today at 12:00 (Overdue by a few hours)
+    dueDateTime: createIsoFromLocal('2026-11-11', '12:00'),
     progress: 60,
     deliverableType: 'software',
     referenceLinks: [
@@ -475,3 +476,4 @@ export const initialActivities: Activity[] = [
     timestamp: '2026-11-10T16:20:00.000Z',
   },
 ];
+

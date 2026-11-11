@@ -13,3 +13,4 @@ export const storageService: IStorageAdapter = new LocalStorageAdapter();
 
 export * from './StorageAdapter';
 export * from './LocalStorageAdapter';
+

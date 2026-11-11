@@ -52,3 +52,4 @@ class DefaultPrototypeRegistry implements IPrototypeRegistry {
 
 // Singleton registry instance ready for future extension
 export const prototypeRegistry: IPrototypeRegistry = new DefaultPrototypeRegistry();
+

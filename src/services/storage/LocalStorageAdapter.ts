@@ -178,3 +178,4 @@ export class LocalStorageAdapter implements IStorageAdapter {
     this.setStorageItem(STORAGE_KEYS.USER, initialUser);
   }
 }
+

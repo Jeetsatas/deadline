@@ -65,3 +65,4 @@ When contributing to Deadline, please adhere to these core architectural guideli
 4. Keep PRs focused on a single responsibility.
 
 Thank you for helping build Deadline!
+

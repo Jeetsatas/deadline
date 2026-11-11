@@ -22,3 +22,4 @@ export interface IStorageAdapter {
   importData(jsonData: string): Promise<boolean>;
   resetToSampleData(): Promise<void>;
 }
+

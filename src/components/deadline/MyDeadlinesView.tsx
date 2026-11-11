@@ -111,7 +111,7 @@ export const MyDeadlinesView: React.FC<MyDeadlinesViewProps> = ({
           {/* Status select */}
           <select
             value={statusFilter}
-            onChange={(e) => setStatusFilter(e.target.value as any)}
+            onChange={(e) => setStatusFilter(e.target.value as 'all' | DeadlineStatus | 'upcoming')}
             className="h-9 rounded-md border border-input bg-background/50 px-2.5 text-xs text-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
           >
             <option value="all">All Statuses</option>
@@ -123,7 +123,7 @@ export const MyDeadlinesView: React.FC<MyDeadlinesViewProps> = ({
           {/* Priority select */}
           <select
             value={priorityFilter}
-            onChange={(e) => setPriorityFilter(e.target.value as any)}
+            onChange={(e) => setPriorityFilter(e.target.value as 'all' | Priority)}
             className="h-9 rounded-md border border-input bg-background/50 px-2.5 text-xs text-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
           >
             <option value="all">All Priorities</option>
@@ -136,7 +136,7 @@ export const MyDeadlinesView: React.FC<MyDeadlinesViewProps> = ({
           {/* Type select */}
           <select
             value={typeFilter}
-            onChange={(e) => setTypeFilter(e.target.value as any)}
+            onChange={(e) => setTypeFilter(e.target.value as 'all' | DeliverableType)}
             className="h-9 rounded-md border border-input bg-background/50 px-2.5 text-xs text-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
           >
             <option value="all">All Categories</option>
@@ -153,7 +153,7 @@ export const MyDeadlinesView: React.FC<MyDeadlinesViewProps> = ({
           {/* Sort select */}
           <select
             value={sortBy}
-            onChange={(e) => setSortBy(e.target.value as any)}
+            onChange={(e) => setSortBy(e.target.value as 'dueDateTime' | 'priority' | 'progress')}
             className="h-9 rounded-md border border-input bg-background/50 px-2.5 text-xs text-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
           >
             <option value="dueDateTime">Sort: Due Date</option>

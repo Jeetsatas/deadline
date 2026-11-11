@@ -54,6 +54,10 @@ export const Badge: React.FC<BadgeProps> = ({
         styleClasses = 'bg-red-500/10 text-red-600 dark:text-red-400 border-red-500/20 animate-pulse';
         break;
     }
+  } else if (variant === 'outline') {
+    styleClasses = 'bg-transparent text-foreground border-border';
+  } else if (variant === 'subtle') {
+    styleClasses = 'bg-secondary/60 text-muted-foreground border-transparent';
   }
 
   const sizeClasses = size === 'sm' ? 'px-2 py-0.5 text-xs' : 'px-2.5 py-1 text-xs tracking-wide';
