@@ -56,8 +56,8 @@ describe('Date and Time Validation Suite', () => {
     // Deadline due in 3 hours and 30 minutes
     const targetDue = new Date(fixedNow + (3 * 3600 + 30 * 60) * 1000).toISOString();
 
-    // Initial countdown check
-    const initialCheck = formatTimeRemaining(targetDue);
+    // Initial countdown check using anchored clock
+    const initialCheck = formatTimeRemaining(targetDue, fixedNow);
     expect(initialCheck.isOverdue).toBe(false);
     expect(initialCheck.hours).toBe(3);
     expect(initialCheck.minutes).toBe(30);
@@ -66,7 +66,7 @@ describe('Date and Time Validation Suite', () => {
     const serialized = JSON.stringify({ dueDateTime: targetDue });
     const deserialized = JSON.parse(serialized);
 
-    const afterRefreshCheck = formatTimeRemaining(deserialized.dueDateTime);
+    const afterRefreshCheck = formatTimeRemaining(deserialized.dueDateTime, fixedNow);
     expect(afterRefreshCheck.isOverdue).toBe(false);
     expect(afterRefreshCheck.hours).toBe(3);
     expect(afterRefreshCheck.minutes).toBe(30);

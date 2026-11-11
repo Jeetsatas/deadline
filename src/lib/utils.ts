@@ -66,7 +66,10 @@ export function isDueTomorrow(dueDateTimeIso: string, referenceDate: Date = new 
  * Calculates remaining time until deadline with second precision.
  * Fully resilient across DST transitions and time zones by comparing epoch milliseconds.
  */
-export function formatTimeRemaining(deadlineIso: string): {
+export function formatTimeRemaining(
+  deadlineIso: string,
+  referenceTime: number | Date = new Date()
+): {
   days: number;
   hours: number;
   minutes: number;
@@ -75,7 +78,7 @@ export function formatTimeRemaining(deadlineIso: string): {
   formatted: string;
 } {
   const target = new Date(deadlineIso).getTime();
-  const now = new Date().getTime();
+  const now = typeof referenceTime === 'number' ? referenceTime : referenceTime.getTime();
   const diff = target - now;
 
   const isOverdue = diff < 0;

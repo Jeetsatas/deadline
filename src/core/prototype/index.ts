@@ -35,14 +35,28 @@ export interface PrototypeConfigOption {
   options?: { label: string; value: string }[];
 }
 
-export interface PrototypeTypeDefinition {
-  id: string;
+/**
+ * Optional future execution adapter interface.
+ * Allows future prototype generators or execution agents to hook in
+ * without refactoring the registry.
+ */
+export interface IPrototypeExecutionAdapter {
+  adapterId: string;
   name: string;
-  description: string;
-  enabled: boolean;
-  badge?: string;
-  supportedDeliverables?: DeliverableType[];
-  configSchema?: PrototypeConfigOption[];
+  version?: string;
+  prepare?(config?: Record<string, unknown>): Promise<{ ready: boolean; instructions?: string }>;
+  validateSubmission?(resourceUri: string, config?: Record<string, unknown>): Promise<{ valid: boolean; message?: string }>;
+}
+
+export interface PrototypeTypeDefinition {
+  id: string; // Unique prototype identifier
+  name: string; // Display name
+  description: string; // Plain-language description
+  enabled: boolean; // Enable/disable toggle
+  badge?: string; // Visual badge (e.g. 'Interactive', 'CLI', 'Component')
+  supportedDeliverables?: DeliverableType[]; // Filtered by selected deliverable category
+  configSchema?: PrototypeConfigOption[]; // Configuration schema
+  executionAdapter?: IPrototypeExecutionAdapter; // Optional future execution adapter
   metadata?: Record<string, unknown>;
   createdAt?: string;
 }
@@ -53,6 +67,7 @@ export interface IPrototypeRegistry {
   unregisterType(id: string): void;
   getType(id: string): PrototypeTypeDefinition | undefined;
   listTypes(filter?: { enabledOnly?: boolean; deliverableType?: DeliverableType }): PrototypeTypeDefinition[];
+  discover(filter?: { deliverableType?: DeliverableType; query?: string }): PrototypeTypeDefinition[];
   enableType(id: string): void;
   disableType(id: string): void;
   hasType(id: string): boolean;
@@ -95,7 +110,23 @@ class DefaultPrototypeRegistry implements IPrototypeRegistry {
 
     if (filter?.deliverableType) {
       result = result.filter(
-        (t) => !t.supportedDeliverables || t.supportedDeliverables.length === 0 || t.supportedDeliverables.includes(filter.deliverableType!)
+        (t) =>
+          !t.supportedDeliverables ||
+          t.supportedDeliverables.length === 0 ||
+          t.supportedDeliverables.includes(filter.deliverableType!)
+      );
+    }
+
+    return result;
+  }
+
+  discover(filter?: { deliverableType?: DeliverableType; query?: string }): PrototypeTypeDefinition[] {
+    let result = this.listTypes({ enabledOnly: true, deliverableType: filter?.deliverableType });
+
+    if (filter?.query && filter.query.trim()) {
+      const q = filter.query.toLowerCase();
+      result = result.filter(
+        (t) => t.name.toLowerCase().includes(q) || t.description.toLowerCase().includes(q)
       );
     }
 

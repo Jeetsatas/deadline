@@ -74,8 +74,8 @@ export const CreateDeadlineModal: React.FC = () => {
   const [availablePrototypes, setAvailablePrototypes] = useState<PrototypeTypeDefinition[]>([]);
 
   useEffect(() => {
-    // Load enabled prototypes from registry
-    setAvailablePrototypes(prototypeRegistry.listTypes({ enabledOnly: true }));
+    // Load enabled prototypes from registry filtered by current deliverable category
+    setAvailablePrototypes(prototypeRegistry.discover({ deliverableType }));
   }, [isCreateModalOpen, deliverableType]);
 
   // When editing or opening, populate initial values
@@ -604,15 +604,25 @@ export const CreateDeadlineModal: React.FC = () => {
                       Prototype Type Registry Active
                     </h4>
                     <p className="text-xs text-muted-foreground max-w-md mx-auto mt-1 leading-relaxed">
-                      Prototype categories and automated scaffolding blueprints will be provided in a subsequent development phase.
-                      Existing and new deadlines continue working seamlessly without requiring a prototype selection.
+                      Prototype blueprints for{' '}
+                      <span className="font-semibold text-foreground capitalize">
+                        {deliverableType.replace('_', ' ')}
+                      </span>{' '}
+                      will be configured in a subsequent development phase. Existing and new deadlines continue working seamlessly without requiring a blueprint selection.
                     </p>
                   </div>
 
                   <div className="pt-2">
                     <div className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-secondary/80 border border-border text-xs text-foreground font-mono">
                       <CheckCircle2 className="h-3.5 w-3.5 text-emerald-500" />
-                      <span>Proceeding with: {executionApproach === 'prototype_first' ? 'Prototype First Approach' : 'Standard Execution'}</span>
+                      <span>
+                        Proceeding with:{' '}
+                        {executionApproach === 'prototype_first'
+                          ? 'Prototype First Approach'
+                          : executionApproach === 'guided_execution'
+                          ? 'Guided Execution'
+                          : 'Output Only Execution'}
+                      </span>
                     </div>
                   </div>
                 </div>

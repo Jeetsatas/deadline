@@ -388,4 +388,56 @@ describe('Product Experience & Prototype Selection Architecture Tests', () => {
     expect(restored?.selectedPrototypeId).toBe('generic-proto-spec');
     expect(restored?.prototypeConfig).toEqual({ mode: 'fast-track' });
   });
+
+  it('8. Prototype Registry: discover with deliverable filter, query, and execution adapter', async () => {
+    const mockAdapter = {
+      adapterId: 'react-calc-adapter',
+      name: 'React Calculator Adapter',
+      version: '0.1.0',
+      prepare: async () => ({ ready: true, instructions: 'Run npm run dev' }),
+      validateSubmission: async (uri: string) => ({ valid: uri.startsWith('http'), message: 'Valid URL' }),
+    };
+
+    prototypeRegistry.registerType({
+      id: 'react-app-proto',
+      name: 'React Application Starter',
+      description: 'Vite React prototype boilerplate',
+      enabled: true,
+      supportedDeliverables: ['software'],
+      executionAdapter: mockAdapter,
+    });
+
+    prototypeRegistry.registerType({
+      id: 'slides-proto',
+      name: 'Keynote Presentation Starter',
+      description: 'Slide deck template',
+      enabled: true,
+      supportedDeliverables: ['presentation'],
+    });
+
+    // Discover software only
+    const softwareOnly = prototypeRegistry.discover({ deliverableType: 'software' });
+    expect(softwareOnly.length).toBe(1);
+    expect(softwareOnly[0].id).toBe('react-app-proto');
+
+    // Discover presentation only
+    const presOnly = prototypeRegistry.discover({ deliverableType: 'presentation' });
+    expect(presOnly.length).toBe(1);
+    expect(presOnly[0].id).toBe('slides-proto');
+
+    // Discover with search query
+    const queried = prototypeRegistry.discover({ query: 'boilerplate' });
+    expect(queried.length).toBe(1);
+    expect(queried[0].id).toBe('react-app-proto');
+
+    // Verify execution adapter
+    const adapterDef = prototypeRegistry.getType('react-app-proto');
+    expect(adapterDef?.executionAdapter).toBeDefined();
+    const prepResult = await adapterDef?.executionAdapter?.prepare?.();
+    expect(prepResult?.ready).toBe(true);
+
+    const valResult = await adapterDef?.executionAdapter?.validateSubmission?.('https://mycalc.vercel.app');
+    expect(valResult?.valid).toBe(true);
+  });
 });
+
