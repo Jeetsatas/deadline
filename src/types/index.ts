@@ -1,3 +1,5 @@
+import type { AIExecutionConfig, ApprovedAIExecutionPlan } from '@/core/ai/types';
+
 export type Priority = 'low' | 'medium' | 'high' | 'critical';
 
 export type DeadlineStatus = 'not_started' | 'in_progress' | 'review' | 'completed';
@@ -126,6 +128,11 @@ export interface Deadline {
   tags: string[];
   createdAt: string;
   updatedAt: string;
+
+  // Phase 2 AI-Powered Execution Extensions:
+  aiConfig?: AIExecutionConfig;
+  approvedPlan?: ApprovedAIExecutionPlan;
+  planHistory?: ApprovedAIExecutionPlan[];
 }
 
 export interface DeadlineFilter {

@@ -15,6 +15,7 @@ import {
   AIModelMetadata,
   ModelDiscoveryResult,
   ModelDiscoveryStatus,
+  ApprovedAIExecutionPlan,
 } from '@/types';
 import { storageService } from '@/services/storage';
 import { executionEngine } from '@/core/execution';
@@ -82,6 +83,16 @@ interface DeadlineStoreState {
   getMaskedApiKey: (providerId: AIProviderId) => Promise<string>;
   hasProviderApiKey: (providerId: AIProviderId) => Promise<boolean>;
   generateExecutionPlan: (deadlineId: string, customInstructions?: string, preferredProviderId?: AIProviderId) => Promise<AIExecutionPlan>;
+  saveApprovedPlan: (deadlineId: string, plan: ApprovedAIExecutionPlan) => Promise<void>;
+  updateApprovedPlan: (deadlineId: string, updates: Partial<ApprovedAIExecutionPlan>) => Promise<void>;
+  importPlanMilestones: (deadlineId: string, selectedMilestoneIndices?: number[]) => Promise<{ importedCount: number }>;
+  regenerateDeadlinePlan: (
+    deadlineId: string,
+    providerId: AIProviderId,
+    modelId?: string,
+    customInstructions?: string
+  ) => Promise<AIExecutionPlan>;
+  removeApprovedPlan: (deadlineId: string) => Promise<void>;
 
   // Actions - Data Operations
   loadInitialData: () => Promise<void>;
@@ -970,5 +981,185 @@ export const useDeadlineStore = create<DeadlineStoreState>((set, get) => ({
       set({ isGeneratingPlan: false });
       throw e;
     }
+  },
+
+  saveApprovedPlan: async (deadlineId, plan) => {
+    const target = get().deadlines.find((d) => d.id === deadlineId);
+    if (!target) return;
+
+    const currentApproved = target.approvedPlan;
+    const history = target.planHistory ? [...target.planHistory] : [];
+    if (currentApproved) {
+      history.push(currentApproved);
+    }
+
+    const version = (currentApproved?.version || 0) + 1;
+    const nowIso = new Date().toISOString();
+
+    const finalizedPlan: ApprovedAIExecutionPlan = {
+      ...plan,
+      deadlineId,
+      version,
+      approvalStatus: 'approved',
+      approvedAt: nowIso,
+    };
+
+    await storageService.updateDeadline(deadlineId, {
+      approvedPlan: finalizedPlan,
+      planHistory: history,
+    });
+
+    await storageService.addActivity({
+      id: `act_${Date.now()}`,
+      deadlineId,
+      deadlineTitle: target.title,
+      type: 'updated',
+      title: `Approved AI execution plan v${version} for "${target.title}"`,
+      description: `Provider: ${plan.providerId} (${plan.modelId})`,
+      timestamp: nowIso,
+    });
+
+    const [updatedDeadlines, updatedActivities] = await Promise.all([
+      storageService.getDeadlines(),
+      storageService.getActivities(),
+    ]);
+
+    set({ deadlines: updatedDeadlines, activities: updatedActivities });
+  },
+
+  updateApprovedPlan: async (deadlineId, updates) => {
+    const target = get().deadlines.find((d) => d.id === deadlineId);
+    if (!target || !target.approvedPlan) return;
+
+    const updatedPlan: ApprovedAIExecutionPlan = {
+      ...target.approvedPlan,
+      ...updates,
+      isEditedByUser: true,
+    };
+
+    await storageService.updateDeadline(deadlineId, {
+      approvedPlan: updatedPlan,
+    });
+
+    const [updatedDeadlines, updatedActivities] = await Promise.all([
+      storageService.getDeadlines(),
+      storageService.getActivities(),
+    ]);
+
+    set({ deadlines: updatedDeadlines, activities: updatedActivities });
+  },
+
+  importPlanMilestones: async (deadlineId, selectedMilestoneIndices) => {
+    const target = get().deadlines.find((d) => d.id === deadlineId);
+    if (!target || !target.approvedPlan?.suggestedMilestones) {
+      return { importedCount: 0 };
+    }
+
+    const allPlanMilestones = target.approvedPlan.suggestedMilestones;
+    const candidates = selectedMilestoneIndices
+      ? allPlanMilestones.filter((_, idx) => selectedMilestoneIndices.includes(idx))
+      : allPlanMilestones;
+
+    // Prevent duplicate imports: match against existing milestones by trimmed lowercase title
+    const existingTitles = new Set(target.milestones.map((m) => m.title.trim().toLowerCase()));
+    const toImport = candidates.filter((m) => !existingTitles.has(m.title.trim().toLowerCase()));
+
+    if (toImport.length === 0) {
+      return { importedCount: 0 };
+    }
+
+    const nowIso = new Date().toISOString();
+    const newMilestones: Milestone[] = toImport.map((m, idx) => ({
+      id: `ms_${Date.now()}_${idx}_${Math.random().toString(36).substring(2, 5)}`,
+      deadlineId,
+      title: m.title.trim(),
+      description: m.description ? m.description.trim() : undefined,
+      isCompleted: false,
+      order: target.milestones.length + idx + 1,
+      isCriticalPath: Boolean(m.isCriticalPath),
+      createdAt: nowIso,
+      updatedAt: nowIso,
+    }));
+
+    const combinedMilestones = [...target.milestones, ...newMilestones];
+    const calculatedProgress = executionEngine.calculateProgress(combinedMilestones);
+
+    // Mark imported milestones in approvedPlan
+    const updatedPlanMilestones = target.approvedPlan.suggestedMilestones.map((pm) => {
+      if (toImport.some((imp) => imp.title.trim().toLowerCase() === pm.title.trim().toLowerCase())) {
+        return { ...pm, isImported: true };
+      }
+      return pm;
+    });
+
+    await storageService.updateDeadline(deadlineId, {
+      milestones: combinedMilestones,
+      progress: calculatedProgress,
+      approvedPlan: {
+        ...target.approvedPlan,
+        suggestedMilestones: updatedPlanMilestones,
+      },
+    });
+
+    await storageService.addActivity({
+      id: `act_${Date.now()}`,
+      deadlineId,
+      deadlineTitle: target.title,
+      type: 'updated',
+      title: `Imported ${newMilestones.length} milestone(s) from AI execution plan into "${target.title}"`,
+      timestamp: nowIso,
+    });
+
+    const [updatedDeadlines, updatedActivities] = await Promise.all([
+      storageService.getDeadlines(),
+      storageService.getActivities(),
+    ]);
+
+    set({ deadlines: updatedDeadlines, activities: updatedActivities });
+    return { importedCount: newMilestones.length };
+  },
+
+  regenerateDeadlinePlan: async (deadlineId, providerId, modelId, customInstructions) => {
+    const target = get().deadlines.find((d) => d.id === deadlineId);
+    if (!target) {
+      throw new Error(`Deadline "${deadlineId}" not found.`);
+    }
+
+    const config = get().configuredProviders[providerId];
+    const effectiveModel = modelId || config?.selectedModelId;
+
+    const plan = await aiExecutionService.generateExecutionPlan(
+      target,
+      providerId,
+      undefined,
+      config?.baseUrl,
+      effectiveModel,
+      customInstructions
+    );
+
+    set((state) => ({
+      activeExecutionPlans: {
+        ...state.activeExecutionPlans,
+        [deadlineId]: plan,
+      },
+    }));
+
+    return plan;
+  },
+
+  removeApprovedPlan: async (deadlineId) => {
+    const target = get().deadlines.find((d) => d.id === deadlineId);
+    if (!target) return;
+
+    await storageService.updateDeadline(deadlineId, {
+      approvedPlan: undefined,
+    });
+
+    const [updatedDeadlines, updatedActivities] = await Promise.all([
+      storageService.getDeadlines(),
+      storageService.getActivities(),
+    ]);
+
+    set({ deadlines: updatedDeadlines, activities: updatedActivities });
   },
 }));

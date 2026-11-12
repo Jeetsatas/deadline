@@ -7,6 +7,7 @@ import { CountdownTimer } from '@/components/ui/CountdownTimer';
 import { ProgressBar } from '@/components/ui/ProgressBar';
 import { executionEngine } from '@/core/execution';
 import { SubmitDeliverableModal } from '@/components/deliverables/SubmitDeliverableModal';
+import { AIExecutionPlanSection } from './AIExecutionPlanSection';
 import { formatDate, formatDateTime, generateDeadlineMarkdownReport } from '@/lib/utils';
 import {
   ArrowLeft,
@@ -69,6 +70,7 @@ export const DeadlineWorkspace: React.FC<DeadlineWorkspaceProps> = ({ deadline, 
   const [showAddLink, setShowAddLink] = useState(false);
   const [linkTitle, setLinkTitle] = useState('');
   const [linkUrl, setLinkUrl] = useState('');
+  const [workspaceTab, setWorkspaceTab] = useState<'execution' | 'ai_plan'>('execution');
 
   // Execution engine analysis
   const executionPlan = executionEngine.analyzeDeadline(deadline);
@@ -236,6 +238,74 @@ export const DeadlineWorkspace: React.FC<DeadlineWorkspaceProps> = ({ deadline, 
           />
         </div>
       </div>
+
+      {/* Workspace Sub-Navigation Tab Switcher */}
+      <div className="flex items-center gap-2 border-b border-border pb-3">
+        <button
+          type="button"
+          onClick={() => setWorkspaceTab('execution')}
+          className={`flex items-center gap-2 px-3.5 py-2 rounded-lg text-xs font-semibold transition-all cursor-pointer ${
+            workspaceTab === 'execution'
+              ? 'bg-primary text-white shadow-sm'
+              : 'bg-secondary/60 text-muted-foreground hover:text-foreground hover:bg-secondary'
+          }`}
+        >
+          <Layers className="h-4 w-4" />
+          <span>Workspace Execution</span>
+        </button>
+
+        <button
+          type="button"
+          onClick={() => setWorkspaceTab('ai_plan')}
+          className={`flex items-center gap-2 px-3.5 py-2 rounded-lg text-xs font-semibold transition-all cursor-pointer ${
+            workspaceTab === 'ai_plan'
+              ? 'bg-primary text-white shadow-sm'
+              : 'bg-secondary/60 text-muted-foreground hover:text-foreground hover:bg-secondary'
+          }`}
+        >
+          <Sparkles className="h-4 w-4" />
+          <span>Execution Plan</span>
+          {deadline.approvedPlan ? (
+            <span className="text-[10px] font-mono px-1.5 py-0.2 rounded-full bg-background/20 font-bold ml-1">
+              v{deadline.approvedPlan.version}
+            </span>
+          ) : (
+            <span className="text-[10px] font-mono px-1.5 py-0.2 rounded-full bg-orange-500/20 text-orange-600 dark:text-orange-400 font-bold ml-1">
+              AI Available
+            </span>
+          )}
+        </button>
+      </div>
+
+      {workspaceTab === 'ai_plan' ? (
+        <AIExecutionPlanSection deadline={deadline} />
+      ) : (
+        <>
+      {/* Active AI Plan Compact Callout if available */}
+      {deadline.approvedPlan && (
+        <div className="p-3.5 rounded-xl border border-primary/30 bg-primary/5 flex items-center justify-between gap-3 text-xs">
+          <div className="flex items-center gap-2.5 min-w-0">
+            <Sparkles className="h-4 w-4 text-primary shrink-0" />
+            <div className="min-w-0">
+              <span className="font-semibold text-foreground block truncate">
+                AI Execution Plan v{deadline.approvedPlan.version} Active ({deadline.approvedPlan.providerId})
+              </span>
+              <p className="text-[11px] text-muted-foreground truncate">
+                {deadline.approvedPlan.taskUnderstanding}
+              </p>
+            </div>
+          </div>
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            onClick={() => setWorkspaceTab('ai_plan')}
+            className="shrink-0 text-xs cursor-pointer"
+          >
+            View Full Plan
+          </Button>
+        </div>
+      )}
 
       {/* EXECUTION APPROACH CALLOUT: PROTOTYPE FIRST VS GUIDED VS OUTPUT ONLY */}
       {approach === 'prototype_first' && !isCompleted && (
@@ -766,6 +836,8 @@ export const DeadlineWorkspace: React.FC<DeadlineWorkspaceProps> = ({ deadline, 
           </div>
         </div>
       </div>
+      </>
+      )}
 
       {/* Deliverable Submission Modal */}
       {isSubmitModalOpen && (

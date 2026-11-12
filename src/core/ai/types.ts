@@ -127,6 +127,48 @@ export interface AIContext {
   customInstructions?: string;
 }
 
+export type AIExecutionMode = 'manual' | 'ai_assisted' | 'ai_ide';
+
+export interface AIExecutionConfig {
+  mode: AIExecutionMode;
+  providerId?: AIProviderId;
+  modelId?: string;
+  customInstructions?: string;
+}
+
+export interface AIPlanMilestone {
+  id?: string;
+  title: string;
+  description: string;
+  order: number;
+  isCriticalPath: boolean;
+  dependencies?: string[];
+  isImported?: boolean;
+}
+
+export type AIPlanApprovalStatus = 'pending_review' | 'approved' | 'rejected' | 'modified';
+
+export interface ApprovedAIExecutionPlan {
+  id: string; // e.g. plan_1731412000000
+  deadlineId: string;
+  providerId: AIProviderId;
+  modelId: string;
+  generatedAt: string;
+  approvedAt: string;
+  version: number;
+  approvalStatus: AIPlanApprovalStatus;
+  taskUnderstanding: string;
+  suggestedApproach: string;
+  suggestedMilestones: AIPlanMilestone[];
+  requiredResources: string[];
+  firstActionableStep: string;
+  deliverableSpecificGuidance?: string;
+  isEditedByUser?: boolean;
+  userNotes?: string;
+  latencyMs?: number;
+  rawPromptSummary?: string;
+}
+
 /**
  * AI-generated execution plan.
  * Distinct from user requirements; will not overwrite user inputs.

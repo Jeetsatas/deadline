@@ -6,12 +6,21 @@ import { Textarea } from '@/components/ui/Textarea';
 import { Button } from '@/components/ui/Button';
 import { Badge } from '@/components/ui/Badge';
 import {
+  Deadline,
   Priority,
   DeliverableType,
   ExecutionApproach,
   ReferenceLink,
+  Milestone,
+  AIProviderId,
+  AIExecutionPlan,
+  ApprovedAIExecutionPlan,
+  AIPlanMilestone,
+  AIExecutionMode,
 } from '@/types';
 import { prototypeRegistry, PrototypeTypeDefinition } from '@/core/prototype';
+import { aiExecutionService } from '@/core/ai/AIExecutionService';
+import { credentialStorage } from '@/core/security/SessionMemoryCredentialStore';
 import { formatDate, createIsoFromLocal, formatTimeRemaining } from '@/lib/utils';
 import {
   Target,
@@ -35,6 +44,11 @@ import {
   Cpu,
   Compass,
   AlertTriangle,
+  Sparkles,
+  RefreshCw,
+  Edit2,
+  Key,
+  Flame,
 } from 'lucide-react';
 
 export const CreateDeadlineModal: React.FC = () => {
@@ -44,6 +58,8 @@ export const CreateDeadlineModal: React.FC = () => {
     createDeadline,
     updateDeadline,
     editingDeadline,
+    configuredProviders,
+    discoveredModels,
   } = useDeadlineStore();
 
   const isEditing = Boolean(editingDeadline);
@@ -69,6 +85,26 @@ export const CreateDeadlineModal: React.FC = () => {
   const [newLinkUrl, setNewLinkUrl] = useState('');
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [isSubmitting, setIsSubmitting] = useState(false);
+
+  // Phase 2 AI Integration states
+  const [executionMode, setExecutionMode] = useState<AIExecutionMode>('manual');
+  const [aiProviderId, setAiProviderId] = useState<AIProviderId>('gemini');
+  const [aiModelId, setAiModelId] = useState<string>('gemini-2.0-flash');
+  const [isGeneratingPlan, setIsGeneratingPlan] = useState(false);
+  const [generatedPlan, setGeneratedPlan] = useState<AIExecutionPlan | null>(null);
+  const [isReviewingPlan, setIsReviewingPlan] = useState(false);
+  const [planError, setPlanError] = useState<string | null>(null);
+  const [inlineApiKey, setInlineApiKey] = useState('');
+  const [hasSessionKey, setHasSessionKey] = useState(false);
+  const [importMilestonesOnCreate, setImportMilestonesOnCreate] = useState(true);
+
+  // Editable fields for review mode
+  const [isEditingPlan, setIsEditingPlan] = useState(false);
+  const [reviewTaskUnderstanding, setReviewTaskUnderstanding] = useState('');
+  const [reviewSuggestedApproach, setReviewSuggestedApproach] = useState('');
+  const [reviewMilestones, setReviewMilestones] = useState<AIPlanMilestone[]>([]);
+  const [reviewResources, setReviewResources] = useState('');
+  const [reviewFirstStep, setReviewFirstStep] = useState('');
 
   // Registered prototype types from registry
   const [availablePrototypes, setAvailablePrototypes] = useState<PrototypeTypeDefinition[]>([]);
@@ -96,6 +132,17 @@ export const CreateDeadlineModal: React.FC = () => {
       setReferenceLinks(
         editingDeadline.referenceLinks.map((l) => ({ title: l.title, url: l.url }))
       );
+      if (editingDeadline.aiConfig) {
+        setExecutionMode(editingDeadline.aiConfig.mode || 'manual');
+        if (editingDeadline.aiConfig.providerId) setAiProviderId(editingDeadline.aiConfig.providerId);
+        if (editingDeadline.aiConfig.modelId) setAiModelId(editingDeadline.aiConfig.modelId);
+      } else {
+        setExecutionMode('manual');
+      }
+      setGeneratedPlan(null);
+      setIsReviewingPlan(false);
+      setIsEditingPlan(false);
+      setPlanError(null);
       setCurrentStep(1);
     } else {
       // Default to tomorrow 11:59 PM as requested in standard demonstration scenario
@@ -118,10 +165,42 @@ export const CreateDeadlineModal: React.FC = () => {
       setPriority('high');
       setTags('');
       setReferenceLinks([]);
+      setExecutionMode('manual');
+      setGeneratedPlan(null);
+      setIsReviewingPlan(false);
+      setIsEditingPlan(false);
+      setPlanError(null);
+      setInlineApiKey('');
       setCurrentStep(1);
     }
     setErrors({});
   }, [editingDeadline, isCreateModalOpen]);
+
+  // Session key checking effect
+  useEffect(() => {
+    let isMounted = true;
+    const checkKey = async () => {
+      const exists = await credentialStorage.hasSecret(`ai_key_${aiProviderId}`);
+      if (isMounted) {
+        setHasSessionKey(exists);
+      }
+    };
+    checkKey();
+    return () => {
+      isMounted = false;
+    };
+  }, [aiProviderId, isCreateModalOpen]);
+
+  // Default model synchronizer
+  useEffect(() => {
+    if (aiProviderId === 'gemini') {
+      const geminiDiscovered = discoveredModels['gemini'];
+      const defaultModel = configuredProviders['gemini']?.selectedModelId || geminiDiscovered?.[0]?.id || 'gemini-2.0-flash';
+      setAiModelId(defaultModel);
+    } else if (aiProviderId === 'anthropic') {
+      setAiModelId('claude-3-7-sonnet-latest');
+    }
+  }, [aiProviderId, configuredProviders, discoveredModels]);
 
   // Validation per step
   const validateStep = (step: number): boolean => {
@@ -175,6 +254,90 @@ export const CreateDeadlineModal: React.FC = () => {
     setReferenceLinks(referenceLinks.filter((_, i) => i !== index));
   };
 
+  const handleGeneratePlanInModal = async () => {
+    setIsGeneratingPlan(true);
+    setPlanError(null);
+
+    try {
+      if (!title.trim() || !expectedOutput.trim() || !deadlineDate || !deadlineTime) {
+        throw new Error(
+          'Please ensure Project Title, Target Expected Output, and Due Date/Time are filled before generating the plan.'
+        );
+      }
+
+      let key = await credentialStorage.getSecret(`ai_key_${aiProviderId}`);
+      if (!key && inlineApiKey.trim()) {
+        key = inlineApiKey.trim();
+        await credentialStorage.saveSecret(`ai_key_${aiProviderId}`, key);
+        setHasSessionKey(true);
+      }
+
+      if (!key) {
+        throw new Error(
+          `No active API key in session memory for ${
+            aiProviderId === 'gemini' ? 'Google Gemini' : 'Anthropic'
+          }. Please enter your API key below.`
+        );
+      }
+
+      const tempDeadline: Deadline = {
+        id: `dl_temp_${Date.now()}`,
+        title: title.trim(),
+        description: description.trim(),
+        expectedOutput: expectedOutput.trim(),
+        minimumAcceptableOutput: minimumAcceptableOutput.trim() || undefined,
+        deadlineDate,
+        deadlineTime,
+        dueDateTime: createIsoFromLocal(deadlineDate, deadlineTime),
+        priority,
+        status: 'in_progress',
+        progress: 0,
+        deliverableType,
+        executionApproach,
+        selectedPrototypeId: selectedPrototypeId || undefined,
+        referenceLinks: referenceLinks.map((l, idx) => ({
+          id: `ref_${idx}`,
+          title: l.title,
+          url: l.url,
+          createdAt: new Date().toISOString(),
+        })),
+        attachments: [],
+        milestones: [],
+        notes: '',
+        tags: tags.split(',').map((t) => t.trim()).filter(Boolean),
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+      };
+
+      const plan = await aiExecutionService.generateExecutionPlan(
+        tempDeadline,
+        aiProviderId,
+        key,
+        configuredProviders[aiProviderId]?.baseUrl,
+        aiModelId
+      );
+
+      setGeneratedPlan(plan);
+      setReviewTaskUnderstanding(plan.taskUnderstanding);
+      setReviewSuggestedApproach(plan.suggestedApproach);
+      setReviewMilestones(
+        plan.suggestedMilestones.map((m) => ({
+          title: m.title,
+          description: m.description,
+          order: m.order,
+          isCriticalPath: m.isCriticalPath,
+        }))
+      );
+      setReviewResources(plan.requiredResources.join(', '));
+      setReviewFirstStep(plan.firstActionableStep);
+      setIsReviewingPlan(true);
+    } catch (err: unknown) {
+      setPlanError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setIsGeneratingPlan(false);
+    }
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!validateStep(currentStep)) return;
@@ -195,8 +358,50 @@ export const CreateDeadlineModal: React.FC = () => {
 
       const dueDateTime = createIsoFromLocal(deadlineDate, deadlineTime);
 
+      let approvedPlanData: ApprovedAIExecutionPlan | undefined = undefined;
+      let initialMilestones: Milestone[] = [];
+
+      if (executionMode === 'ai_assisted' && generatedPlan) {
+        const nowIso = new Date().toISOString();
+        approvedPlanData = {
+          id: `plan_${Date.now()}`,
+          deadlineId: editingDeadline?.id || `dl_${Date.now()}`,
+          providerId: aiProviderId,
+          modelId: aiModelId,
+          generatedAt: generatedPlan.generatedAt,
+          approvedAt: nowIso,
+          version: 1,
+          approvalStatus: 'approved',
+          taskUnderstanding: reviewTaskUnderstanding.trim(),
+          suggestedApproach: reviewSuggestedApproach.trim(),
+          suggestedMilestones: reviewMilestones,
+          requiredResources: reviewResources
+            .split(',')
+            .map((r) => r.trim())
+            .filter(Boolean),
+          firstActionableStep: reviewFirstStep.trim(),
+          deliverableSpecificGuidance: generatedPlan.deliverableSpecificGuidance,
+          isEditedByUser: isEditingPlan,
+          latencyMs: generatedPlan.latencyMs,
+        };
+
+        if (importMilestonesOnCreate) {
+          initialMilestones = reviewMilestones.map((m, idx) => ({
+            id: `ms_${Date.now()}_${idx}_${Math.random().toString(36).substring(2, 5)}`,
+            deadlineId: editingDeadline?.id || `dl_${Date.now()}`,
+            title: m.title.trim(),
+            description: m.description ? m.description.trim() : undefined,
+            isCompleted: false,
+            order: m.order || idx + 1,
+            isCriticalPath: Boolean(m.isCriticalPath),
+            createdAt: nowIso,
+            updatedAt: nowIso,
+          }));
+        }
+      }
+
       if (isEditing && editingDeadline) {
-        await updateDeadline(editingDeadline.id, {
+        const updates: Partial<Deadline> = {
           title: title.trim(),
           description: description.trim(),
           expectedOutput: expectedOutput.trim(),
@@ -211,7 +416,21 @@ export const CreateDeadlineModal: React.FC = () => {
           prototypeConfig: Object.keys(prototypeConfig).length > 0 ? prototypeConfig : undefined,
           tags: parsedTags,
           referenceLinks: links,
-        });
+        };
+
+        if (approvedPlanData) {
+          updates.approvedPlan = approvedPlanData;
+          updates.aiConfig = {
+            mode: executionMode,
+            providerId: aiProviderId,
+            modelId: aiModelId,
+          };
+          if (importMilestonesOnCreate && initialMilestones.length > 0) {
+            updates.milestones = [...editingDeadline.milestones, ...initialMilestones];
+          }
+        }
+
+        await updateDeadline(editingDeadline.id, updates);
       } else {
         await createDeadline({
           title: title.trim(),
@@ -228,11 +447,17 @@ export const CreateDeadlineModal: React.FC = () => {
           executionApproach,
           selectedPrototypeId: selectedPrototypeId || undefined,
           prototypeConfig: Object.keys(prototypeConfig).length > 0 ? prototypeConfig : undefined,
-          milestones: [],
+          milestones: initialMilestones,
           referenceLinks: links,
           attachments: [],
           tags: parsedTags,
           notes: '',
+          aiConfig: {
+            mode: executionMode,
+            providerId: executionMode === 'ai_assisted' ? aiProviderId : undefined,
+            modelId: executionMode === 'ai_assisted' ? aiModelId : undefined,
+          },
+          approvedPlan: approvedPlanData,
         });
       }
       closeCreateModal();
@@ -967,6 +1192,440 @@ export const CreateDeadlineModal: React.FC = () => {
                   </div>
                 )}
               </div>
+
+              {/* CHOOSE EXECUTION MODE (Phase 2 Requirement) */}
+              <div className="space-y-3 pt-2">
+                <div className="flex items-center justify-between">
+                  <label className="text-xs font-bold text-foreground uppercase tracking-wider block">
+                    Choose Execution Mode
+                  </label>
+                  <span className="text-[11px] text-muted-foreground">
+                    Define how you will plan and produce this deliverable
+                  </span>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                  {/* Mode 1: Work Manually */}
+                  <div
+                    onClick={() => {
+                      setExecutionMode('manual');
+                      setIsReviewingPlan(false);
+                    }}
+                    className={`p-3.5 rounded-xl border transition-all cursor-pointer flex flex-col justify-between space-y-2 ${
+                      executionMode === 'manual'
+                        ? 'border-primary bg-primary/5 ring-1 ring-primary/20 shadow-sm'
+                        : 'border-border bg-card hover:bg-secondary/40'
+                    }`}
+                  >
+                    <div className="space-y-1">
+                      <div className="flex items-center justify-between">
+                        <span className="text-xs font-bold text-foreground">Work Manually</span>
+                        {executionMode === 'manual' && (
+                          <CheckCircle2 className="h-4 w-4 text-primary" />
+                        )}
+                      </div>
+                      <p className="text-[11px] text-muted-foreground leading-relaxed">
+                        Manage your own milestones, checklists, and delivery progress independently.
+                      </p>
+                    </div>
+                    <span className="text-[10px] font-mono text-muted-foreground">
+                      Standard Workflow
+                    </span>
+                  </div>
+
+                  {/* Mode 2: AI-Assisted Planning */}
+                  <div
+                    onClick={() => setExecutionMode('ai_assisted')}
+                    className={`p-3.5 rounded-xl border transition-all cursor-pointer flex flex-col justify-between space-y-2 ${
+                      executionMode === 'ai_assisted'
+                        ? 'border-primary bg-primary/5 ring-1 ring-primary/20 shadow-sm'
+                        : 'border-border bg-card hover:bg-secondary/40'
+                    }`}
+                  >
+                    <div className="space-y-1">
+                      <div className="flex items-center justify-between">
+                        <span className="text-xs font-bold text-foreground flex items-center gap-1.5">
+                          <Sparkles className="h-3.5 w-3.5 text-primary" />
+                          <span>AI-Assisted</span>
+                        </span>
+                        {executionMode === 'ai_assisted' && (
+                          <CheckCircle2 className="h-4 w-4 text-primary" />
+                        )}
+                      </div>
+                      <p className="text-[11px] text-muted-foreground leading-relaxed">
+                        Synthesize an actionable execution roadmap, sequenced milestones, and first step.
+                      </p>
+                    </div>
+                    <span className="text-[10px] font-mono text-primary font-semibold">
+                      Live AI Copilot
+                    </span>
+                  </div>
+
+                  {/* Mode 3: AI + IDE (Deferred / Future-Ready) */}
+                  <div
+                    className="p-3.5 rounded-xl border border-dashed border-border/80 bg-secondary/20 opacity-60 cursor-not-allowed flex flex-col justify-between space-y-2 select-none"
+                    title="IDE handoff and local agent bridge will be introduced in the next phase. Deadline does not pretend to control your IDE."
+                  >
+                    <div className="space-y-1">
+                      <div className="flex items-center justify-between">
+                        <span className="text-xs font-bold text-muted-foreground flex items-center gap-1.5">
+                          <Cpu className="h-3.5 w-3.5 text-muted-foreground" />
+                          <span>AI + IDE</span>
+                        </span>
+                        <span className="text-[9px] font-mono uppercase bg-secondary px-1.5 py-0.5 rounded text-muted-foreground">
+                          Coming Soon
+                        </span>
+                      </div>
+                      <p className="text-[11px] text-muted-foreground leading-relaxed">
+                        Local companion agent and IDE handoff. Coming in next development phase.
+                      </p>
+                    </div>
+                    <span className="text-[10px] font-mono text-muted-foreground">
+                      Deferred
+                    </span>
+                  </div>
+                </div>
+              </div>
+
+              {/* AI CONFIGURATION & GENERATION (Visible when AI-Assisted Planning is selected) */}
+              {executionMode === 'ai_assisted' && !isReviewingPlan && (
+                <div className="p-4 rounded-xl border border-primary/30 bg-card space-y-4 shadow-sm animate-fade-in">
+                  <div className="flex items-center justify-between pb-2 border-b border-border/60">
+                    <div className="flex items-center gap-2">
+                      <Sparkles className="h-4 w-4 text-primary" />
+                      <h4 className="text-xs font-bold text-foreground uppercase tracking-wider">
+                        Configure AI Execution Copilot
+                      </h4>
+                    </div>
+                    <span className="text-[10px] font-mono text-muted-foreground">
+                      Real-time synthesis
+                    </span>
+                  </div>
+
+                  {/* Provider & Model Selectors */}
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <div>
+                      <label className="text-[11px] font-medium text-muted-foreground block mb-1">
+                        AI Provider
+                      </label>
+                      <select
+                        value={aiProviderId}
+                        onChange={(e) => {
+                          const pId = e.target.value as AIProviderId;
+                          setAiProviderId(pId);
+                        }}
+                        className="w-full h-8 px-2.5 rounded-md border border-input bg-background text-xs cursor-pointer"
+                      >
+                        <option value="gemini">Google Gemini (Active)</option>
+                        <option value="anthropic">Anthropic Claude (Active)</option>
+                        <option value="openai" disabled>
+                          OpenAI (Phase 3 - Unavailable)
+                        </option>
+                        <option value="openai_compatible" disabled>
+                          OpenAI-Compatible (Phase 3 - Unavailable)
+                        </option>
+                      </select>
+                    </div>
+
+                    <div>
+                      <label className="text-[11px] font-medium text-muted-foreground block mb-1">
+                        Model
+                      </label>
+                      {aiProviderId === 'gemini' ? (
+                        <select
+                          value={aiModelId}
+                          onChange={(e) => setAiModelId(e.target.value)}
+                          className="w-full h-8 px-2.5 rounded-md border border-input bg-background text-xs font-mono cursor-pointer"
+                        >
+                          {(discoveredModels['gemini'] || []).length > 0 ? (
+                            (discoveredModels['gemini'] || []).map((m) => (
+                              <option key={m.id} value={m.id}>
+                                {m.displayName} ({m.id})
+                              </option>
+                            ))
+                          ) : (
+                            <>
+                              <option value="gemini-2.0-flash">Gemini 2.0 Flash</option>
+                              <option value="gemini-2.5-flash">Gemini 2.5 Flash</option>
+                              <option value="gemini-1.5-flash">Gemini 1.5 Flash</option>
+                              <option value="gemini-1.5-pro">Gemini 1.5 Pro</option>
+                            </>
+                          )}
+                        </select>
+                      ) : (
+                        <select
+                          value={aiModelId}
+                          onChange={(e) => setAiModelId(e.target.value)}
+                          className="w-full h-8 px-2.5 rounded-md border border-input bg-background text-xs font-mono cursor-pointer"
+                        >
+                          <option value="claude-3-7-sonnet-latest">Claude 3.7 Sonnet</option>
+                          <option value="claude-3-5-haiku-latest">Claude 3.5 Haiku</option>
+                          <option value="claude-3-opus-latest">Claude 3 Opus</option>
+                        </select>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Session Key Warning/Prompt if missing */}
+                  {!hasSessionKey && (
+                    <div className="p-3 rounded-lg border border-amber-500/30 bg-amber-500/5 space-y-1.5">
+                      <div className="flex items-center gap-1.5 text-xs font-semibold text-amber-600 dark:text-amber-400">
+                        <Key className="h-3.5 w-3.5" />
+                        <span>No key in session memory for {aiProviderId === 'gemini' ? 'Google Gemini' : 'Anthropic'}</span>
+                      </div>
+                      <p className="text-[11px] text-muted-foreground">
+                        Enter your API key below to load it into volatile browser memory:
+                      </p>
+                      <div className="flex items-center gap-2 pt-1">
+                        <input
+                          type="password"
+                          placeholder={aiProviderId === 'gemini' ? 'AIzaSy...' : 'sk-ant-...'}
+                          value={inlineApiKey}
+                          onChange={(e) => setInlineApiKey(e.target.value)}
+                          className="flex-1 h-8 px-2.5 rounded border border-input bg-background text-xs font-mono"
+                        />
+                        <Button
+                          type="button"
+                          size="sm"
+                          variant="secondary"
+                          onClick={async () => {
+                            if (inlineApiKey.trim()) {
+                              await credentialStorage.saveSecret(`ai_key_${aiProviderId}`, inlineApiKey.trim());
+                              setHasSessionKey(true);
+                            }
+                          }}
+                        >
+                          Save to Memory
+                        </Button>
+                      </div>
+                    </div>
+                  )}
+
+                  {planError && (
+                    <div className="p-3 rounded-lg border border-red-500/30 bg-red-500/5 text-xs text-red-500 font-medium">
+                      {planError}
+                    </div>
+                  )}
+
+                  <Button
+                    type="button"
+                    variant="primary"
+                    size="md"
+                    onClick={handleGeneratePlanInModal}
+                    isLoading={isGeneratingPlan}
+                    className="w-full justify-center shadow-sm font-semibold cursor-pointer"
+                  >
+                    <Sparkles className="h-4 w-4 mr-1.5" />
+                    Generate AI Execution Plan
+                  </Button>
+                </div>
+              )}
+
+              {/* PLAN REVIEW & APPROVAL INTERFACE (Section 5 Requirement) */}
+              {executionMode === 'ai_assisted' && isReviewingPlan && generatedPlan && (
+                <div className="p-4 rounded-xl border border-emerald-500/30 bg-card space-y-4 shadow-md animate-fade-in">
+                  <div className="flex flex-wrap items-center justify-between gap-2 pb-3 border-b border-border">
+                    <div className="flex items-center gap-2">
+                      <CheckCircle2 className="h-4 w-4 text-emerald-500" />
+                      <h4 className="text-xs font-bold text-foreground uppercase tracking-wider">
+                        Review AI Execution Plan
+                      </h4>
+                      <Badge variant="outline" className="text-[10px] bg-emerald-500/10 text-emerald-500 border-emerald-500/20">
+                        Pending Approval
+                      </Badge>
+                    </div>
+
+                    <div className="flex items-center gap-2 text-xs">
+                      {generatedPlan.latencyMs !== undefined && (
+                        <span className="text-[10px] font-mono text-muted-foreground">
+                          Latency: {generatedPlan.latencyMs} ms
+                        </span>
+                      )}
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => setIsEditingPlan(!isEditingPlan)}
+                        className="text-xs text-primary"
+                      >
+                        <Edit2 className="h-3 w-3 mr-1" />
+                        {isEditingPlan ? 'Done Editing' : 'Edit Content'}
+                      </Button>
+                    </div>
+                  </div>
+
+                  {/* 1. Task Understanding */}
+                  <div className="space-y-1 p-3 rounded-lg bg-secondary/30 border border-border">
+                    <span className="text-[11px] font-bold text-primary uppercase block">
+                      1. Task Understanding
+                    </span>
+                    {isEditingPlan ? (
+                      <textarea
+                        rows={2}
+                        value={reviewTaskUnderstanding}
+                        onChange={(e) => setReviewTaskUnderstanding(e.target.value)}
+                        className="w-full rounded border border-input bg-background p-2 text-xs leading-relaxed"
+                      />
+                    ) : (
+                      <p className="text-xs text-foreground/90 leading-relaxed">
+                        {reviewTaskUnderstanding}
+                      </p>
+                    )}
+                  </div>
+
+                  {/* 2. Suggested Approach */}
+                  <div className="space-y-1 p-3 rounded-lg bg-secondary/30 border border-border">
+                    <span className="text-[11px] font-bold text-amber-500 uppercase block">
+                      2. Suggested Execution Approach
+                    </span>
+                    {isEditingPlan ? (
+                      <textarea
+                        rows={2}
+                        value={reviewSuggestedApproach}
+                        onChange={(e) => setReviewSuggestedApproach(e.target.value)}
+                        className="w-full rounded border border-input bg-background p-2 text-xs leading-relaxed"
+                      />
+                    ) : (
+                      <p className="text-xs text-foreground/90 leading-relaxed">
+                        {reviewSuggestedApproach}
+                      </p>
+                    )}
+                  </div>
+
+                  {/* 3. Execution Milestones */}
+                  <div className="space-y-2">
+                    <span className="text-[11px] font-bold text-foreground uppercase block">
+                      3. Execution Milestones ({reviewMilestones.length})
+                    </span>
+                    <div className="space-y-1.5 max-h-48 overflow-y-auto pr-1">
+                      {reviewMilestones.map((m, idx) => (
+                        <div
+                          key={idx}
+                          className="flex items-start gap-2.5 p-2 rounded bg-background border border-border text-xs"
+                        >
+                          <span className="h-5 w-5 rounded-full bg-primary/10 text-primary font-mono text-[10px] font-bold flex items-center justify-center shrink-0 mt-0.5">
+                            {m.order || idx + 1}
+                          </span>
+                          <div className="flex-1 min-w-0">
+                            {isEditingPlan ? (
+                              <input
+                                type="text"
+                                value={m.title}
+                                onChange={(e) => {
+                                  const updated = [...reviewMilestones];
+                                  updated[idx].title = e.target.value;
+                                  setReviewMilestones(updated);
+                                }}
+                                className="w-full h-6 px-1.5 rounded border border-input bg-background text-xs font-semibold"
+                              />
+                            ) : (
+                              <div className="flex items-center justify-between gap-1">
+                                <span className="font-semibold text-foreground truncate">{m.title}</span>
+                                {m.isCriticalPath && (
+                                  <span className="text-[9px] font-bold text-orange-600 bg-orange-500/10 px-1.5 py-0.2 rounded border border-orange-500/20 shrink-0">
+                                    Critical Path
+                                  </span>
+                                )}
+                              </div>
+                            )}
+                            {m.description && (
+                              <p className="text-[11px] text-muted-foreground mt-0.5 truncate">
+                                {m.description}
+                              </p>
+                            )}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* 4. Required Resources */}
+                  <div className="space-y-1">
+                    <span className="text-[11px] font-bold text-foreground uppercase block">
+                      4. Required Resources
+                    </span>
+                    {isEditingPlan ? (
+                      <input
+                        type="text"
+                        value={reviewResources}
+                        onChange={(e) => setReviewResources(e.target.value)}
+                        className="w-full h-8 px-2.5 rounded border border-input bg-background text-xs font-mono"
+                      />
+                    ) : (
+                      <div className="flex flex-wrap gap-1">
+                        {reviewResources.split(',').map((r, i) => (
+                          <span
+                            key={i}
+                            className="text-[10px] px-2 py-0.5 rounded bg-secondary text-foreground font-mono border border-border"
+                          >
+                            {r.trim()}
+                          </span>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+
+                  {/* 5. First Actionable Step */}
+                  <div className="p-3 rounded-lg border border-orange-500/30 bg-orange-500/5 space-y-1">
+                    <span className="text-[11px] font-bold text-orange-600 dark:text-orange-400 uppercase flex items-center gap-1">
+                      <Flame className="h-3 w-3" />
+                      <span>5. First Actionable Step (&lt; 15 Min)</span>
+                    </span>
+                    {isEditingPlan ? (
+                      <textarea
+                        rows={2}
+                        value={reviewFirstStep}
+                        onChange={(e) => setReviewFirstStep(e.target.value)}
+                        className="w-full rounded border border-input bg-background p-2 text-xs leading-relaxed"
+                      />
+                    ) : (
+                      <p className="text-xs text-foreground font-medium leading-relaxed">
+                        {reviewFirstStep}
+                      </p>
+                    )}
+                  </div>
+
+                  {/* Import Checkbox */}
+                  <label className="flex items-center gap-2 pt-1 text-xs cursor-pointer select-none">
+                    <input
+                      type="checkbox"
+                      checked={importMilestonesOnCreate}
+                      onChange={(e) => setImportMilestonesOnCreate(e.target.checked)}
+                      className="rounded border-input text-primary focus:ring-primary cursor-pointer"
+                    />
+                    <span className="text-foreground font-medium">
+                      Import these {reviewMilestones.length} milestones directly into Deadline checklist
+                    </span>
+                  </label>
+
+                  {/* Review Actions */}
+                  <div className="flex items-center justify-between pt-2 border-t border-border">
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => {
+                        setIsReviewingPlan(false);
+                        setGeneratedPlan(null);
+                      }}
+                      className="text-xs cursor-pointer text-muted-foreground hover:text-foreground"
+                    >
+                      ← Back / Reconfigure
+                    </Button>
+
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      onClick={handleGeneratePlanInModal}
+                      isLoading={isGeneratingPlan}
+                      className="text-xs cursor-pointer"
+                    >
+                      <RefreshCw className="h-3 w-3 mr-1" /> Regenerate
+                    </Button>
+                  </div>
+                </div>
+              )}
             </div>
           )}
 
@@ -987,10 +1646,26 @@ export const CreateDeadlineModal: React.FC = () => {
                 <Button type="button" variant="primary" size="sm" onClick={handleNext}>
                   Next <ArrowRight className="h-4 w-4 ml-1.5" />
                 </Button>
+              ) : executionMode === 'ai_assisted' && !isReviewingPlan ? (
+                <Button
+                  type="button"
+                  variant="primary"
+                  size="md"
+                  onClick={handleGeneratePlanInModal}
+                  isLoading={isGeneratingPlan}
+                  className="cursor-pointer"
+                >
+                  <Sparkles className="h-4 w-4 mr-1.5" />
+                  Generate AI Plan
+                </Button>
               ) : (
-                <Button type="submit" variant="primary" size="md" isLoading={isSubmitting}>
+                <Button type="submit" variant="primary" size="md" isLoading={isSubmitting} className="cursor-pointer">
                   <Check className="h-4 w-4 mr-1.5" />
-                  {isEditing ? 'Save Changes' : 'Start Execution'}
+                  {isReviewingPlan
+                    ? 'Accept Plan & Start Execution'
+                    : isEditing
+                    ? 'Save Changes'
+                    : 'Start Execution'}
                 </Button>
               )}
             </div>
