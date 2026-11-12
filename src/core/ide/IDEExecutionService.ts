@@ -16,7 +16,12 @@ export class IDEExecutionService {
   /**
    * Transforms a Deadline domain object into a universal IDEExecutionContext.
    */
-  createExecutionContext(deadline: Deadline, userInstructions?: string): IDEExecutionContext {
+  createExecutionContext(
+    deadline: Deadline,
+    userInstructions?: string,
+    projectConfig?: unknown,
+    environmentVerification?: unknown
+  ): IDEExecutionContext {
     return {
       deadlineId: deadline.id,
       deadlineTitle: deadline.title,
@@ -46,6 +51,8 @@ export class IDEExecutionService {
         `Minimum fallback MVP satisfied: "${deadline.minimumAcceptableOutput || deadline.expectedOutput}"`,
         'All critical path milestones verified.',
       ],
+      projectConfig,
+      environmentVerification,
     };
   }
 
@@ -56,7 +63,9 @@ export class IDEExecutionService {
     deadline: Deadline,
     providerId: IDEProviderId,
     projectPath: string,
-    userInstructions?: string
+    userInstructions?: string,
+    projectConfig?: unknown,
+    environmentVerification?: unknown
   ): Promise<{ session: ExecutionSession; launchResult: LaunchResult }> {
     const provider = ideProviderRegistry.getProvider(providerId);
     if (!provider) {
@@ -72,7 +81,12 @@ export class IDEExecutionService {
     const resolvedPath = validation.resolvedPath || projectPath;
 
     // 2. Prepare handoff context
-    const context = this.createExecutionContext(deadline, userInstructions);
+    const context = this.createExecutionContext(
+      deadline,
+      userInstructions,
+      projectConfig,
+      environmentVerification
+    );
 
     // 3. Write DEADLINE_CONTEXT.md
     const handoffResult = await provider.prepareHandoff(

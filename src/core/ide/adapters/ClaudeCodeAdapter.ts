@@ -76,3 +76,4 @@ export class ClaudeCodeAdapter implements IIDEAdapter {
     return await bridgeClient.stopSession(sessionId, pid);
   }
 }
+

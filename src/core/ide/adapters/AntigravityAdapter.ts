@@ -75,3 +75,4 @@ export class AntigravityAdapter implements IIDEAdapter {
     return await bridgeClient.stopSession(sessionId, pid);
   }
 }
+

@@ -128,3 +128,4 @@ export class IDECapabilityResolver {
     return status === 'supported';
   }
 }
+

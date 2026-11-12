@@ -9,6 +9,7 @@ import { executionEngine } from '@/core/execution';
 import { SubmitDeliverableModal } from '@/components/deliverables/SubmitDeliverableModal';
 import { AIExecutionPlanSection } from './AIExecutionPlanSection';
 import { IDEExecutionSection } from './IDEExecutionSection';
+import { PrepareProjectModal } from '@/components/project/PrepareProjectModal';
 import { formatDate, formatDateTime, generateDeadlineMarkdownReport } from '@/lib/utils';
 import {
   ArrowLeft,
@@ -60,6 +61,9 @@ export const DeadlineWorkspace: React.FC<DeadlineWorkspaceProps> = ({ deadline, 
     openCreateModal,
     deleteDeadline,
     activeExecutionSessions,
+    isPrepareProjectModalOpen,
+    openPrepareProjectModal,
+    closePrepareProjectModal,
   } = useDeadlineStore();
 
   const [notes, setNotes] = useState(deadline.notes || '');
@@ -307,7 +311,7 @@ export const DeadlineWorkspace: React.FC<DeadlineWorkspaceProps> = ({ deadline, 
       {workspaceTab === 'ai_plan' ? (
         <AIExecutionPlanSection
           deadline={deadline}
-          onOpenIDE={() => setWorkspaceTab('ide_execution')}
+          onOpenIDE={openPrepareProjectModal}
         />
       ) : workspaceTab === 'ide_execution' ? (
         <IDEExecutionSection
@@ -344,11 +348,11 @@ export const DeadlineWorkspace: React.FC<DeadlineWorkspaceProps> = ({ deadline, 
               type="button"
               variant="primary"
               size="sm"
-              onClick={() => setWorkspaceTab('ide_execution')}
+              onClick={openPrepareProjectModal}
               className="text-xs cursor-pointer shadow-sm font-semibold"
             >
               <Code2 className="h-3.5 w-3.5 mr-1" />
-              Open in IDE
+              Execute & Connect IDE
             </Button>
           </div>
         </div>
@@ -892,6 +896,16 @@ export const DeadlineWorkspace: React.FC<DeadlineWorkspaceProps> = ({ deadline, 
           isOpen={isSubmitModalOpen}
           onClose={() => setIsSubmitModalOpen(false)}
           deadline={deadline}
+        />
+      )}
+
+      {/* Prepare Project & Environment Setup Modal */}
+      {isPrepareProjectModalOpen && (
+        <PrepareProjectModal
+          isOpen={isPrepareProjectModalOpen}
+          onClose={closePrepareProjectModal}
+          deadline={deadline}
+          onLaunchSuccess={() => setWorkspaceTab('ide_execution')}
         />
       )}
     </div>

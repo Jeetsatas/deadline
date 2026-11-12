@@ -75,3 +75,4 @@ export class VSCodeAdapter implements IIDEAdapter {
     return await bridgeClient.stopSession(sessionId, pid);
   }
 }
+

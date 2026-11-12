@@ -160,3 +160,6 @@ export * from '@/core/ai/types';
 // Re-export Universal IDE Integration domain types
 export * from '@/core/ide/types';
 
+// Re-export Project Initialization & Environment Setup domain types
+export * from '@/core/project/ProjectTypes';
+

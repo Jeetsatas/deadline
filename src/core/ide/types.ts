@@ -1,4 +1,9 @@
 import { ApprovedAIExecutionPlan } from '@/types';
+import type {
+  HostRuntimes,
+  ProjectInspectionResult,
+  EnvironmentVerificationReport,
+} from '../project/ProjectTypes';
 
 export type IDEProviderId =
   | 'claude_code'
@@ -85,6 +90,8 @@ export interface IDEExecutionContext {
   firstActionableStep: string;
   userInstructions?: string;
   acceptanceCriteria: string[];
+  projectConfig?: unknown;
+  environmentVerification?: unknown;
 }
 
 export type ExecutionSessionStatus =
@@ -172,6 +179,13 @@ export interface ILocalBridgeClient {
   getSessionStatus(sessionId: string, pid?: number): Promise<{ isAlive: boolean; status: ExecutionSessionStatus }>;
   stopSession(sessionId: string, pid?: number): Promise<boolean>;
   inspectWorkspaceChanges(projectPath: string): Promise<WorkspaceChangesResult>;
+  pickFolder(prompt?: string, startingDirectory?: string): Promise<{ success: boolean; path?: string; isGitRepo?: boolean; cancelled?: boolean; error?: string }>;
+  getHostRuntimes(): Promise<HostRuntimes>;
+  inspectProject(projectPath: string): Promise<ProjectInspectionResult>;
+  createProjectDirectory(parentDirectory: string, folderName: string): Promise<{ success: boolean; projectPath?: string; alreadyExists?: boolean; error?: string }>;
+  initializeProjectTemplate(projectPath: string, templateId: string, projectName: string, initGit?: boolean): Promise<{ success: boolean; createdFiles?: string[]; error?: string }>;
+  installDependencies(projectPath: string, packageManager: string, packages?: string[]): Promise<{ success: boolean; stdout?: string; stderr?: string; exitCode?: number; error?: string }>;
+  verifyEnvironment(projectPath: string, validationCommand?: string): Promise<EnvironmentVerificationReport>;
 }
 
 export interface IIDEAdapter {
@@ -196,3 +210,4 @@ export interface IIDEAdapter {
     pid?: number
   ): Promise<boolean>;
 }
+

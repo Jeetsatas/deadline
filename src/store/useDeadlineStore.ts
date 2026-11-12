@@ -21,6 +21,11 @@ import {
   IDECapabilities,
   ExecutionSession,
   WorkspaceChangesResult,
+  ProjectConfiguration,
+  EnvironmentVerificationReport,
+  HostRuntimes,
+  ProjectInspectionResult,
+  InitializationProgressEvent,
 } from '@/types';
 import { storageService } from '@/services/storage';
 import { executionEngine } from '@/core/execution';
@@ -34,6 +39,7 @@ import { ideDiscoveryService } from '@/core/ide/IDEDiscoveryService';
 import { ideExecutionService } from '@/core/ide/IDEExecutionService';
 import { localBridgeClient } from '@/core/ide/bridge/LocalBridgeClient';
 import { ideProviderRegistry } from '@/core/ide/IDEProviderRegistry';
+import { projectInitializationService } from '@/core/project/ProjectInitializationService';
 
 export type NavigationTab =
   | 'overview'
@@ -158,6 +164,25 @@ interface DeadlineStoreState {
   refreshIDESessionStatus: (deadlineId: string) => Promise<ExecutionSession | null>;
   stopIDESession: (deadlineId: string) => Promise<boolean>;
   inspectWorkspaceChanges: (deadlineId: string) => Promise<WorkspaceChangesResult>;
+
+  // Phase 4 Project Initialization & Environment Setup State
+  hostRuntimes: HostRuntimes | null;
+  projectConfigurations: Record<string, ProjectConfiguration>;
+  environmentReports: Record<string, EnvironmentVerificationReport>;
+  isPickingFolder: boolean;
+  isInitializingProject: boolean;
+  initializationProgressEvents: Record<string, InitializationProgressEvent[]>;
+  isPrepareProjectModalOpen: boolean;
+
+  // Phase 4 Project Initialization Actions
+  openPrepareProjectModal: () => void;
+  closePrepareProjectModal: () => void;
+  fetchHostRuntimes: () => Promise<HostRuntimes>;
+  pickNativeFolder: (prompt?: string, startingDir?: string) => Promise<{ success: boolean; path?: string; isGitRepo?: boolean; cancelled?: boolean; error?: string }>;
+  inspectProjectDirectory: (path: string) => Promise<ProjectInspectionResult>;
+  saveProjectConfiguration: (deadlineId: string, config: ProjectConfiguration) => void;
+  initializeProjectEnvironment: (deadlineId: string, config: ProjectConfiguration) => Promise<EnvironmentVerificationReport>;
+  verifyProjectEnvironment: (deadlineId: string, path?: string) => Promise<EnvironmentVerificationReport>;
 }
 
 const defaultFilter: DeadlineFilter = {
@@ -207,6 +232,15 @@ export const useDeadlineStore = create<DeadlineStoreState>((set, get) => ({
   ideSessionError: null,
   workspaceChanges: {},
   isInspectingWorkspaceChanges: false,
+
+  // Phase 4 Project Initialization Initial State
+  hostRuntimes: null,
+  projectConfigurations: {},
+  environmentReports: {},
+  isPickingFolder: false,
+  isInitializingProject: false,
+  initializationProgressEvents: {},
+  isPrepareProjectModalOpen: false,
 
   filter: defaultFilter,
 
@@ -323,6 +357,22 @@ export const useDeadlineStore = create<DeadlineStoreState>((set, get) => ({
         // Ignore JSON error
       }
 
+      let parsedProjectConfigs: Record<string, ProjectConfiguration> = {};
+      try {
+        const rawConfigs = localStorage.getItem('deadline_project_configs_v1');
+        if (rawConfigs) parsedProjectConfigs = JSON.parse(rawConfigs);
+      } catch {
+        // Ignore
+      }
+
+      let parsedEnvReports: Record<string, EnvironmentVerificationReport> = {};
+      try {
+        const rawReports = localStorage.getItem('deadline_env_reports_v1');
+        if (rawReports) parsedEnvReports = JSON.parse(rawReports);
+      } catch {
+        // Ignore
+      }
+
       set({
         deadlines,
         activities,
@@ -330,6 +380,8 @@ export const useDeadlineStore = create<DeadlineStoreState>((set, get) => ({
         configuredProviders: parsedProviders,
         discoveredModels: parsedDiscoveredModels,
         activeExecutionSessions: parsedSessions,
+        projectConfigurations: parsedProjectConfigs,
+        environmentReports: parsedEnvReports,
         isLoading: false,
       });
 
@@ -1356,6 +1408,8 @@ export const useDeadlineStore = create<DeadlineStoreState>((set, get) => ({
 
     const providerId = get().selectedIDEProviderId;
     const projectPath = get().selectedProjectPath;
+    const projectConfig = get().projectConfigurations[deadlineId];
+    const envReport = get().environmentReports[deadlineId];
 
     set({ isStartingIDESession: true, ideSessionError: null });
 
@@ -1364,7 +1418,9 @@ export const useDeadlineStore = create<DeadlineStoreState>((set, get) => ({
         deadline,
         providerId,
         projectPath,
-        userInstructions
+        userInstructions,
+        projectConfig,
+        envReport
       );
 
       const updatedSessions = {
@@ -1489,5 +1545,150 @@ export const useDeadlineStore = create<DeadlineStoreState>((set, get) => ({
       set({ isInspectingWorkspaceChanges: false });
       throw err;
     }
+  },
+
+  // ==========================================
+  // PHASE 4 PROJECT INITIALIZATION ACTIONS
+  // ==========================================
+
+  openPrepareProjectModal: () => set({ isPrepareProjectModalOpen: true }),
+  closePrepareProjectModal: () => set({ isPrepareProjectModalOpen: false }),
+
+  fetchHostRuntimes: async () => {
+    try {
+      const runtimes = await projectInitializationService.getHostRuntimes();
+      set({ hostRuntimes: runtimes });
+      return runtimes;
+    } catch (e) {
+      console.warn('Could not fetch host runtimes', e);
+      const fallback: HostRuntimes = {
+        node: { isInstalled: true, version: 'v20+' },
+        npm: { isInstalled: true, version: '10+' },
+        pnpm: { isInstalled: false },
+        yarn: { isInstalled: false },
+        python: { isInstalled: true, version: '3.9+' },
+        pip: { isInstalled: true, version: '21+' },
+        git: { isInstalled: true, version: '2+' },
+      };
+      set({ hostRuntimes: fallback });
+      return fallback;
+    }
+  },
+
+  pickNativeFolder: async (prompt = 'Select Project Location', startingDir?: string) => {
+    set({ isPickingFolder: true });
+    try {
+      const res = await projectInitializationService.pickFolder(prompt, startingDir);
+      set({ isPickingFolder: false });
+      if (res.success && res.path) {
+        set({ selectedProjectPath: res.path });
+      }
+      return res;
+    } catch (err) {
+      set({ isPickingFolder: false });
+      return { success: false, error: (err as Error).message };
+    }
+  },
+
+  inspectProjectDirectory: async (path: string) => {
+    return await projectInitializationService.inspectProject(path);
+  },
+
+  saveProjectConfiguration: (deadlineId: string, config: ProjectConfiguration) => {
+    const updated = {
+      ...get().projectConfigurations,
+      [deadlineId]: config,
+    };
+    if (typeof window !== 'undefined') {
+      try {
+        localStorage.setItem('deadline_project_configs_v1', JSON.stringify(updated));
+      } catch {
+        /* storage quota or access error */
+      }
+    }
+    set({
+      projectConfigurations: updated,
+      selectedProjectPath: config.projectPath,
+    });
+  },
+
+  initializeProjectEnvironment: async (deadlineId: string, config: ProjectConfiguration) => {
+    set({ isInitializingProject: true });
+
+    const handleProgress = (event: InitializationProgressEvent) => {
+      set((state) => {
+        const existing = state.initializationProgressEvents[deadlineId] || [];
+        return {
+          initializationProgressEvents: {
+            ...state.initializationProgressEvents,
+            [deadlineId]: [...existing, event],
+          },
+        };
+      });
+    };
+
+    try {
+      const { report, error } = await projectInitializationService.initializeProject(
+        config,
+        handleProgress
+      );
+
+      const updatedConfigs = {
+        ...get().projectConfigurations,
+        [deadlineId]: config,
+      };
+
+      const updatedReports = {
+        ...get().environmentReports,
+        [deadlineId]: report,
+      };
+
+      if (typeof window !== 'undefined') {
+        try {
+          localStorage.setItem('deadline_project_configs_v1', JSON.stringify(updatedConfigs));
+          localStorage.setItem('deadline_env_reports_v1', JSON.stringify(updatedReports));
+        } catch {
+          /* storage quota or access error */
+        }
+      }
+
+      set({
+        projectConfigurations: updatedConfigs,
+        environmentReports: updatedReports,
+        selectedProjectPath: config.projectPath,
+        isInitializingProject: false,
+      });
+
+      if (error && !report.isReady) {
+        throw new Error(error);
+      }
+
+      return report;
+    } catch (err) {
+      set({ isInitializingProject: false });
+      throw err;
+    }
+  },
+
+  verifyProjectEnvironment: async (deadlineId: string, pathOverride?: string) => {
+    const config = get().projectConfigurations[deadlineId];
+    const path = pathOverride || config?.projectPath || get().selectedProjectPath;
+
+    const report = await projectInitializationService.verifyEnvironment(path);
+    const updatedReports = {
+      ...get().environmentReports,
+      [deadlineId]: report,
+    };
+
+    if (typeof window !== 'undefined') {
+      try {
+        localStorage.setItem('deadline_env_reports_v1', JSON.stringify(updatedReports));
+      } catch {
+        /* storage quota or access error */
+      }
+    }
+
+    set({ environmentReports: updatedReports });
+    return report;
   },
 }));

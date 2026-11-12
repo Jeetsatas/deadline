@@ -7,6 +7,11 @@ import {
   WorkspaceChangesResult,
   ExecutionSessionStatus,
 } from '../types';
+import type {
+  HostRuntimes,
+  ProjectInspectionResult,
+  EnvironmentVerificationReport,
+} from '../../project/ProjectTypes';
 
 export class LocalBridgeClient implements ILocalBridgeClient {
   private baseUrl: string;
@@ -209,6 +214,173 @@ export class LocalBridgeClient implements ILocalBridgeClient {
 
     return await res.json();
   }
+
+  async pickFolder(
+    prompt = 'Select Project Location',
+    startingDirectory?: string
+  ): Promise<{ success: boolean; path?: string; isGitRepo?: boolean; cancelled?: boolean; error?: string }> {
+    try {
+      const res = await fetch(`${this.baseUrl}/workspace/pick-folder`, {
+        method: 'POST',
+        headers: this.getHeaders(),
+        body: JSON.stringify({ prompt, startingDirectory }),
+        signal: AbortSignal.timeout(120000),
+      });
+
+      return await res.json();
+    } catch (e) {
+      return { success: false, error: (e as Error).message };
+    }
+  }
+
+  async getHostRuntimes(): Promise<HostRuntimes> {
+    try {
+      const res = await fetch(`${this.baseUrl}/system/runtimes`, {
+        method: 'GET',
+        headers: this.getHeaders(),
+        signal: AbortSignal.timeout(5000),
+      });
+
+      if (!res.ok) {
+        throw new Error(`Failed to detect system runtimes: HTTP ${res.status}`);
+      }
+
+      const data = await res.json();
+      return data.runtimes;
+    } catch {
+      return {
+        node: { isInstalled: false },
+        npm: { isInstalled: false },
+        pnpm: { isInstalled: false },
+        yarn: { isInstalled: false },
+        python: { isInstalled: false },
+        pip: { isInstalled: false },
+        git: { isInstalled: false },
+      };
+    }
+  }
+
+  async inspectProject(projectPath: string): Promise<ProjectInspectionResult> {
+    try {
+      const res = await fetch(`${this.baseUrl}/project/inspect`, {
+        method: 'POST',
+        headers: this.getHeaders(),
+        body: JSON.stringify({ projectPath }),
+        signal: AbortSignal.timeout(6000),
+      });
+
+      const data = await res.json();
+      if (!res.ok || !data.valid) {
+        return {
+          projectPath,
+          exists: false,
+          isGitRepo: false,
+          hasPackageJson: false,
+          hasRequirementsTxt: false,
+          hasPyproject: false,
+          detectedFramework: 'none',
+          detectedLanguage: 'other',
+          detectedPackageManager: 'none',
+          dependencies: [],
+          devDependencies: [],
+          specialFiles: [],
+          fileCount: 0,
+        };
+      }
+
+      return data.inspection;
+    } catch {
+      return {
+        projectPath,
+        exists: false,
+        isGitRepo: false,
+        hasPackageJson: false,
+        hasRequirementsTxt: false,
+        hasPyproject: false,
+        detectedFramework: 'none',
+        detectedLanguage: 'other',
+        detectedPackageManager: 'none',
+        dependencies: [],
+        devDependencies: [],
+        specialFiles: [],
+        fileCount: 0,
+      };
+    }
+  }
+
+  async createProjectDirectory(
+    parentDirectory: string,
+    folderName: string
+  ): Promise<{ success: boolean; projectPath?: string; alreadyExists?: boolean; error?: string }> {
+    const res = await fetch(`${this.baseUrl}/project/create-directory`, {
+      method: 'POST',
+      headers: this.getHeaders(),
+      body: JSON.stringify({ parentDirectory, folderName }),
+      signal: AbortSignal.timeout(6000),
+    });
+
+    return await res.json();
+  }
+
+  async initializeProjectTemplate(
+    projectPath: string,
+    templateId: string,
+    projectName: string,
+    initGit = true
+  ): Promise<{ success: boolean; createdFiles?: string[]; error?: string }> {
+    const res = await fetch(`${this.baseUrl}/project/initialize-template`, {
+      method: 'POST',
+      headers: this.getHeaders(),
+      body: JSON.stringify({ projectPath, templateId, projectName, initGit }),
+      signal: AbortSignal.timeout(10000),
+    });
+
+    return await res.json();
+  }
+
+  async installDependencies(
+    projectPath: string,
+    packageManager: string,
+    packages: string[] = []
+  ): Promise<{ success: boolean; stdout?: string; stderr?: string; exitCode?: number; error?: string }> {
+    const res = await fetch(`${this.baseUrl}/project/install-dependencies`, {
+      method: 'POST',
+      headers: this.getHeaders(),
+      body: JSON.stringify({ projectPath, packageManager, packages }),
+      signal: AbortSignal.timeout(190000), // 3+ minutes
+    });
+
+    return await res.json();
+  }
+
+  async verifyEnvironment(
+    projectPath: string,
+    validationCommand?: string
+  ): Promise<EnvironmentVerificationReport> {
+    try {
+      const res = await fetch(`${this.baseUrl}/project/verify-environment`, {
+        method: 'POST',
+        headers: this.getHeaders(),
+        body: JSON.stringify({ projectPath, validationCommand }),
+        signal: AbortSignal.timeout(65000),
+      });
+
+      return await res.json();
+    } catch (e) {
+      return {
+        projectPath,
+        isReady: false,
+        directoryExists: false,
+        manifestExists: false,
+        dependenciesInstalled: false,
+        gitInitialized: false,
+        buildCheckPassed: false,
+        issues: [(e as Error).message || 'Verification failed.'],
+        verifiedAt: new Date().toISOString(),
+      };
+    }
+  }
 }
 
 export const localBridgeClient = new LocalBridgeClient();
+

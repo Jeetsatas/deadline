@@ -19,6 +19,7 @@ import {
   ArrowRight,
   Check,
   Key,
+  Sparkles,
 } from 'lucide-react';
 
 interface IDEExecutionSectionProps {
@@ -43,6 +44,10 @@ export const IDEExecutionSection: React.FC<IDEExecutionSectionProps> = ({
     ideSessionError,
     workspaceChanges,
     isInspectingWorkspaceChanges,
+    projectConfigurations,
+    environmentReports,
+    openPrepareProjectModal,
+    pickNativeFolder,
     pairBridge,
     detectInstalledIDEs,
     setSelectedIDEProvider,
@@ -68,9 +73,18 @@ export const IDEExecutionSection: React.FC<IDEExecutionSectionProps> = ({
 
   const activeSession = activeExecutionSessions[deadline.id];
   const changes = workspaceChanges[deadline.id];
+  const projectConfig = projectConfigurations[deadline.id];
+  const envReport = environmentReports[deadline.id];
   const allProviders = ideProviderRegistry.listProviders();
   const selectedProvider = ideProviderRegistry.getProvider(selectedIDEProviderId);
   const selectedDetection = detectedIDEs[selectedIDEProviderId];
+
+  // Sync project path input when selectedProjectPath updates
+  useEffect(() => {
+    if (selectedProjectPath) {
+      setProjectPathInput(selectedProjectPath);
+    }
+  }, [selectedProjectPath]);
 
   // Refresh status every 10 seconds if a session is actively running
   useEffect(() => {
@@ -82,6 +96,20 @@ export const IDEExecutionSection: React.FC<IDEExecutionSectionProps> = ({
     }, 10000);
     return () => clearInterval(interval);
   }, [activeSession, deadline.id, refreshIDESessionStatus]);
+
+  // Handle native folder browse
+  const handleNativeBrowse = async () => {
+    try {
+      const res = await pickNativeFolder('Select Project Directory', projectPathInput);
+      if (res.success && res.path) {
+        setProjectPathInput(res.path);
+        setSelectedProjectPath(res.path);
+        setPathValidationStatus({ valid: true, isGitRepo: res.isGitRepo });
+      }
+    } catch {
+      /* User cancelled or bridge not reached */
+    }
+  };
 
   // Handle validating project path
   const handleValidatePath = async () => {
@@ -293,10 +321,37 @@ export const IDEExecutionSection: React.FC<IDEExecutionSectionProps> = ({
 
       {/* 3. Project Directory & Context Configuration */}
       <div className="p-5 rounded-xl border border-border bg-card shadow-sm space-y-4">
-        <h3 className="text-sm font-bold text-foreground flex items-center gap-2">
-          <Folder className="h-4 w-4 text-primary" />
-          Project Workspace Directory & Execution Context
-        </h3>
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+          <h3 className="text-sm font-bold text-foreground flex items-center gap-2">
+            <Folder className="h-4 w-4 text-primary" />
+            Project Workspace Directory & Execution Context
+          </h3>
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            onClick={openPrepareProjectModal}
+            className="text-xs cursor-pointer font-semibold shadow-sm text-primary border-primary/30 hover:bg-primary/10"
+          >
+            <Sparkles className="h-3.5 w-3.5 mr-1.5" />
+            Prepare Project (Wizard)
+          </Button>
+        </div>
+
+        {/* Environment Verified Banner if applicable */}
+        {envReport?.isReady && (
+          <div className="p-3 rounded-lg border border-emerald-500/30 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 text-xs flex items-center justify-between gap-2">
+            <div className="flex items-center gap-2">
+              <Check className="h-4 w-4 shrink-0" />
+              <span>
+                <strong>Environment Verified:</strong> {projectConfig?.projectType || 'Configured'} (Dependencies installed & build verified)
+              </span>
+            </div>
+            <Badge variant="outline" className="text-[10px] font-mono border-emerald-500/40 text-emerald-500">
+              Ready
+            </Badge>
+          </div>
+        )}
 
         <div className="space-y-1.5">
           <label className="text-xs font-medium text-foreground flex items-center justify-between">
@@ -321,13 +376,24 @@ export const IDEExecutionSection: React.FC<IDEExecutionSectionProps> = ({
             />
             <Button
               type="button"
+              variant="primary"
+              size="sm"
+              onClick={handleNativeBrowse}
+              className="text-xs cursor-pointer shrink-0"
+              title="Open macOS native Finder folder picker"
+            >
+              <Folder className="h-3.5 w-3.5 mr-1" />
+              Browse...
+            </Button>
+            <Button
+              type="button"
               variant="outline"
               size="sm"
               onClick={handleValidatePath}
               isLoading={isValidatingPath}
               className="text-xs cursor-pointer shrink-0"
             >
-              Validate Path
+              Validate
             </Button>
           </div>
           {pathValidationStatus?.error && (

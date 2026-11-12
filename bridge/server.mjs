@@ -279,6 +279,633 @@ function detectAllProviders() {
   return providers;
 }
 
+// Detect installed system runtimes and package managers
+function detectRuntimes() {
+  const result = {
+    node: { isInstalled: false },
+    npm: { isInstalled: false },
+    pnpm: { isInstalled: false },
+    yarn: { isInstalled: false },
+    python: { isInstalled: false },
+    pip: { isInstalled: false },
+    git: { isInstalled: false },
+  };
+
+  // Node
+  try {
+    const v = execSync('node -v 2>/dev/null', { encoding: 'utf8' }).trim();
+    const p = execSync('which node 2>/dev/null', { encoding: 'utf8' }).trim();
+    result.node = { isInstalled: true, version: v, path: p };
+  } catch {
+    /* node check optional */
+  }
+
+  // npm
+  try {
+    const v = execSync('npm -v 2>/dev/null', { encoding: 'utf8' }).trim();
+    const p = execSync('which npm 2>/dev/null', { encoding: 'utf8' }).trim();
+    result.npm = { isInstalled: true, version: v, path: p };
+  } catch {
+    /* npm check optional */
+  }
+
+  // pnpm
+  try {
+    const v = execSync('pnpm -v 2>/dev/null', { encoding: 'utf8' }).trim();
+    const p = execSync('which pnpm 2>/dev/null', { encoding: 'utf8' }).trim();
+    result.pnpm = { isInstalled: true, version: v, path: p };
+  } catch {
+    /* pnpm check optional */
+  }
+
+  // yarn
+  try {
+    const v = execSync('yarn -v 2>/dev/null', { encoding: 'utf8' }).trim();
+    const p = execSync('which yarn 2>/dev/null', { encoding: 'utf8' }).trim();
+    result.yarn = { isInstalled: true, version: v, path: p };
+  } catch {
+    /* yarn check optional */
+  }
+
+  // python3
+  try {
+    const v = execSync('python3 --version 2>/dev/null', { encoding: 'utf8' }).trim();
+    const p = execSync('which python3 2>/dev/null', { encoding: 'utf8' }).trim();
+    result.python = { isInstalled: true, version: v.replace('Python ', ''), path: p };
+  } catch {
+    /* python check optional */
+  }
+
+  // pip
+  try {
+    const v = execSync('python3 -m pip --version 2>/dev/null', { encoding: 'utf8' }).trim();
+    const p = execSync('which pip3 2>/dev/null || which pip 2>/dev/null', { encoding: 'utf8' }).trim();
+    result.pip = { isInstalled: true, version: v.split(' ')[1] || 'Installed', path: p || 'python3 -m pip' };
+  } catch {
+    /* pip check optional */
+  }
+
+  // git
+  try {
+    const v = execSync('git --version 2>/dev/null', { encoding: 'utf8' }).trim();
+    const p = execSync('which git 2>/dev/null', { encoding: 'utf8' }).trim();
+    result.git = { isInstalled: true, version: v.replace('git version ', ''), path: p };
+  } catch {
+    /* git check optional */
+  }
+
+  return result;
+}
+
+// Native Folder Picker on macOS using AppleScript
+function pickFolderNative(prompt, startingDir) {
+  if (process.platform === 'darwin') {
+    const cleanPrompt = (prompt || 'Select Project Location').replace(/["\\]/g, '');
+    const defaultClause =
+      startingDir && fs.existsSync(startingDir)
+        ? `default location POSIX file "${startingDir.replace(/["\\]/g, '')}"`
+        : `default location (path to desktop folder)`;
+    const appleScript = `POSIX path of (choose folder with prompt "${cleanPrompt}" ${defaultClause})`;
+
+    try {
+      const out = execSync(`osascript -e '${appleScript.replace(/'/g, "'\\''")}'`, {
+        encoding: 'utf8',
+        timeout: 120000,
+      }).trim();
+
+      const cleanPath = out.replace(/\/+$/, '') || '/';
+      const validation = validateProjectPath(cleanPath);
+      if (!validation.valid) {
+        return { success: false, error: validation.error };
+      }
+
+      writeAuditLog('PICK_FOLDER_SUCCESS', { path: cleanPath });
+      return {
+        success: true,
+        path: cleanPath,
+        isGitRepo: validation.isGitRepo,
+        exists: true,
+      };
+    } catch (err) {
+      const msg = err.message || '';
+      if (msg.includes('User canceled') || msg.includes('-128')) {
+        return { success: false, cancelled: true, message: 'User cancelled folder selection.' };
+      }
+      return { success: false, error: msg };
+    }
+  }
+
+  return {
+    success: false,
+    error: 'Native folder dialog is only supported on macOS desktop.',
+  };
+}
+
+// Inspect existing or new project directory
+function inspectProject(projectPath) {
+  const validation = validateProjectPath(projectPath);
+  if (!validation.valid) {
+    return { valid: false, error: validation.error };
+  }
+
+  const resolved = validation.resolvedPath;
+  const isGitRepo = fs.existsSync(path.join(resolved, '.git'));
+  const packageJsonPath = path.join(resolved, 'package.json');
+  const reqTxtPath = path.join(resolved, 'requirements.txt');
+  const pyprojectPath = path.join(resolved, 'pyproject.toml');
+
+  let hasPackageJson = fs.existsSync(packageJsonPath);
+  let packageJson = undefined;
+  let dependencies = [];
+  let devDependencies = [];
+  let detectedFramework = 'none';
+  let detectedLanguage = 'unknown';
+  let detectedPackageManager = 'npm';
+
+  if (hasPackageJson) {
+    try {
+      packageJson = JSON.parse(fs.readFileSync(packageJsonPath, 'utf8'));
+      dependencies = Object.keys(packageJson.dependencies || {});
+      devDependencies = Object.keys(packageJson.devDependencies || {});
+
+      const allDeps = [...dependencies, ...devDependencies].join(' ').toLowerCase();
+      if (allDeps.includes('react')) detectedFramework = 'react';
+      else if (allDeps.includes('next')) detectedFramework = 'next';
+      else if (allDeps.includes('vue')) detectedFramework = 'vue';
+      else if (allDeps.includes('express')) detectedFramework = 'express';
+      else detectedFramework = 'node';
+
+      if (fs.existsSync(path.join(resolved, 'tsconfig.json')) || allDeps.includes('typescript')) {
+        detectedLanguage = 'typescript';
+      } else {
+        detectedLanguage = 'javascript';
+      }
+
+      if (fs.existsSync(path.join(resolved, 'pnpm-lock.yaml'))) detectedPackageManager = 'pnpm';
+      else if (fs.existsSync(path.join(resolved, 'yarn.lock'))) detectedPackageManager = 'yarn';
+      else detectedPackageManager = 'npm';
+    } catch {
+      hasPackageJson = false;
+    }
+  }
+
+  const hasRequirementsTxt = fs.existsSync(reqTxtPath);
+  const hasPyproject = fs.existsSync(pyprojectPath);
+  if (hasRequirementsTxt || hasPyproject) {
+    detectedLanguage = 'python';
+    detectedFramework = 'python';
+    detectedPackageManager = 'pip';
+  }
+
+  let fileCount = 0;
+  let specialFiles = [];
+  try {
+    const entries = fs.readdirSync(resolved);
+    fileCount = entries.length;
+    specialFiles = entries.filter((e) =>
+      ['CLAUDE.md', '.cursorrules', 'AGENTS.md', 'README.md', 'tsconfig.json', 'vite.config.ts'].includes(e)
+    );
+  } catch {
+    /* directory entries read failed */
+  }
+
+  return {
+    valid: true,
+    inspection: {
+      projectPath: resolved,
+      exists: true,
+      isGitRepo,
+      hasPackageJson,
+      hasRequirementsTxt,
+      hasPyproject,
+      packageJson,
+      detectedFramework,
+      detectedLanguage,
+      detectedPackageManager,
+      dependencies,
+      devDependencies,
+      specialFiles,
+      fileCount,
+    },
+  };
+}
+
+// Create new project directory safely
+function createProjectDirectory(parentDir, folderName) {
+  const parentVal = validateProjectPath(parentDir);
+  if (!parentVal.valid) {
+    return { success: false, error: parentVal.error };
+  }
+
+  if (!folderName || typeof folderName !== 'string') {
+    return { success: false, error: 'Folder name is required.' };
+  }
+
+  const cleanFolderName = folderName.replace(/[\r\n]+/g, '');
+  if (!cleanFolderName.trim()) {
+    return { success: false, error: 'Folder name cannot be empty.' };
+  }
+
+  if (cleanFolderName.includes('/') || cleanFolderName.includes('\\') || cleanFolderName.includes('..')) {
+    return { success: false, error: 'Folder name cannot contain path separators or directory traversal.' };
+  }
+
+  if (['.', '..', '.git', 'node_modules'].includes(cleanFolderName.trim())) {
+    return { success: false, error: `Folder name "${cleanFolderName.trim()}" is reserved.` };
+  }
+
+  const destPath = path.join(parentVal.resolvedPath, cleanFolderName);
+  if (fs.existsSync(destPath)) {
+    return { success: false, error: `Destination already exists: ${destPath}`, alreadyExists: true };
+  }
+
+  try {
+    fs.mkdirSync(destPath, { mode: 0o755, recursive: false });
+    writeAuditLog('CREATE_PROJECT_DIR', { projectPath: destPath });
+    return { success: true, projectPath: destPath };
+  } catch (err) {
+    return { success: false, error: `Failed to create directory: ${err.message}` };
+  }
+}
+
+// Scaffolds approved template files into empty project directory
+function initializeTemplateFiles(projectPath, templateId, projectName, initGit) {
+  const validation = validateProjectPath(projectPath);
+  if (!validation.valid) {
+    return { success: false, error: validation.error };
+  }
+
+  const targetDir = validation.resolvedPath;
+  const safeName = (projectName || path.basename(targetDir)).replace(/[^a-zA-Z0-9_.-]/g, '-');
+  const createdFiles = [];
+
+  const writeProjectFile = (relPath, content) => {
+    const full = path.join(targetDir, relPath);
+    const dir = path.dirname(full);
+    if (!fs.existsSync(dir)) {
+      fs.mkdirSync(dir, { recursive: true });
+    }
+    fs.writeFileSync(full, content, 'utf8');
+    createdFiles.push(relPath);
+  };
+
+  switch (templateId) {
+    case 'react-vite-ts': {
+      writeProjectFile(
+        'package.json',
+        JSON.stringify(
+          {
+            name: safeName.toLowerCase(),
+            private: true,
+            version: '0.1.0',
+            type: 'module',
+            scripts: {
+              dev: 'vite',
+              build: 'tsc -b && vite build',
+              preview: 'vite preview',
+            },
+            dependencies: {
+              react: '^18.3.1',
+              'react-dom': '^18.3.1',
+              'lucide-react': '^0.460.0',
+            },
+            devDependencies: {
+              '@types/react': '^18.3.12',
+              '@types/react-dom': '^18.3.1',
+              '@vitejs/plugin-react': '^4.3.3',
+              typescript: '^5.6.3',
+              vite: '^5.4.10',
+            },
+          },
+          null,
+          2
+        )
+      );
+
+      writeProjectFile(
+        'vite.config.ts',
+        `import { defineConfig } from 'vite';\nimport react from '@vitejs/plugin-react';\n\nexport default defineConfig({\n  plugins: [react()],\n});\n`
+      );
+
+      writeProjectFile(
+        'tsconfig.json',
+        JSON.stringify(
+          {
+            compilerOptions: {
+              target: 'ES2020',
+              useDefineForClassFields: true,
+              lib: ['ES2020', 'DOM', 'DOM.Iterable'],
+              module: 'ESNext',
+              skipLibCheck: true,
+              moduleResolution: 'bundler',
+              allowImportingTsExtensions: true,
+              resolveJsonModule: true,
+              isolatedModules: true,
+              noEmit: true,
+              jsx: 'react-jsx',
+              strict: true,
+              noUnusedLocals: true,
+              noUnusedParameters: true,
+              noFallthroughCasesInSwitch: true,
+            },
+            include: ['src'],
+          },
+          null,
+          2
+        )
+      );
+
+      writeProjectFile(
+        'index.html',
+        `<!doctype html>\n<html lang="en">\n  <head>\n    <meta charset="UTF-8" />\n    <meta name="viewport" content="width=device-width, initial-scale=1.0" />\n    <title>${safeName}</title>\n  </head>\n  <body>\n    <div id="root"></div>\n    <script type="module" src="/src/main.tsx"></script>\n  </body>\n</html>\n`
+      );
+
+      writeProjectFile(
+        'src/main.tsx',
+        `import React from 'react';\nimport ReactDOM from 'react-dom/client';\nimport App from './App';\nimport './index.css';\n\nReactDOM.createRoot(document.getElementById('root')!).render(\n  <React.StrictMode>\n    <App />\n  </React.StrictMode>\n);\n`
+      );
+
+      writeProjectFile(
+        'src/App.tsx',
+        `import React from 'react';\n\nexport default function App() {\n  return (\n    <main style={{ fontFamily: 'system-ui, sans-serif', padding: '2.5rem', maxWidth: '700px', margin: '0 auto' }}>\n      <header>\n        <h1 style={{ fontSize: '1.8rem', fontWeight: 'bold', marginBottom: '0.5rem' }}>${safeName}</h1>\n        <p style={{ color: '#888' }}>Initialized by Deadline Execution Protocol. Ready to build.</p>\n      </header>\n    </main>\n  );\n}\n`
+      );
+
+      writeProjectFile(
+        'src/index.css',
+        `body {\n  margin: 0;\n  font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;\n  background-color: #0f172a;\n  color: #f8fafc;\n}\n`
+      );
+
+      writeProjectFile('.gitignore', `node_modules\ndist\n.DS_Store\n`);
+      break;
+    }
+
+    case 'react-vite-js': {
+      writeProjectFile(
+        'package.json',
+        JSON.stringify(
+          {
+            name: safeName.toLowerCase(),
+            private: true,
+            version: '0.1.0',
+            type: 'module',
+            scripts: {
+              dev: 'vite',
+              build: 'vite build',
+              preview: 'vite preview',
+            },
+            dependencies: {
+              react: '^18.3.1',
+              'react-dom': '^18.3.1',
+              'lucide-react': '^0.460.0',
+            },
+            devDependencies: {
+              '@vitejs/plugin-react': '^4.3.3',
+              vite: '^5.4.10',
+            },
+          },
+          null,
+          2
+        )
+      );
+
+      writeProjectFile(
+        'vite.config.js',
+        `import { defineConfig } from 'vite';\nimport react from '@vitejs/plugin-react';\n\nexport default defineConfig({\n  plugins: [react()],\n});\n`
+      );
+
+      writeProjectFile(
+        'index.html',
+        `<!doctype html>\n<html lang="en">\n  <head>\n    <meta charset="UTF-8" />\n    <meta name="viewport" content="width=device-width, initial-scale=1.0" />\n    <title>${safeName}</title>\n  </head>\n  <body>\n    <div id="root"></div>\n    <script type="module" src="/src/main.jsx"></script>\n  </body>\n</html>\n`
+      );
+
+      writeProjectFile(
+        'src/main.jsx',
+        `import React from 'react';\nimport ReactDOM from 'react-dom/client';\nimport App from './App';\nimport './index.css';\n\nReactDOM.createRoot(document.getElementById('root')).render(\n  <React.StrictMode>\n    <App />\n  </React.StrictMode>\n);\n`
+      );
+
+      writeProjectFile(
+        'src/App.jsx',
+        `import React from 'react';\n\nexport default function App() {\n  return (\n    <main style={{ fontFamily: 'system-ui, sans-serif', padding: '2.5rem', maxWidth: '700px', margin: '0 auto' }}>\n      <h1>${safeName}</h1>\n      <p>Initialized by Deadline. Ready to build.</p>\n    </main>\n  );\n}\n`
+      );
+
+      writeProjectFile('src/index.css', `body { margin: 0; background: #0f172a; color: #f8fafc; }\n`);
+      writeProjectFile('.gitignore', `node_modules\ndist\n.DS_Store\n`);
+      break;
+    }
+
+    case 'node-ts':
+    case 'node-api': {
+      writeProjectFile(
+        'package.json',
+        JSON.stringify(
+          {
+            name: safeName.toLowerCase(),
+            version: '0.1.0',
+            main: 'dist/index.js',
+            type: 'module',
+            scripts: {
+              build: 'tsc',
+              start: 'node dist/index.js',
+            },
+            dependencies: templateId === 'node-api' ? { express: '^4.21.1', cors: '^2.8.5' } : {},
+            devDependencies: {
+              typescript: '^5.6.3',
+              '@types/node': '^20.17.6',
+            },
+          },
+          null,
+          2
+        )
+      );
+
+      writeProjectFile(
+        'tsconfig.json',
+        JSON.stringify(
+          {
+            compilerOptions: {
+              target: 'ES2022',
+              module: 'NodeNext',
+              moduleResolution: 'NodeNext',
+              outDir: './dist',
+              rootDir: './src',
+              strict: true,
+              esModuleInterop: true,
+              skipLibCheck: true,
+              forceConsistentCasingInFileNames: true,
+            },
+            include: ['src/**/*'],
+          },
+          null,
+          2
+        )
+      );
+
+      writeProjectFile(
+        'src/index.ts',
+        `console.info('Starting ${safeName}...');\n`
+      );
+
+      writeProjectFile('.gitignore', `node_modules\ndist\n.DS_Store\n`);
+      break;
+    }
+
+    case 'python-app': {
+      writeProjectFile('requirements.txt', `pytest>=8.0.0\n`);
+      writeProjectFile(
+        'main.py',
+        `def main():\n    print("Running ${safeName}")\n\nif __name__ == "__main__":\n    main()\n`
+      );
+      writeProjectFile(
+        'test_main.py',
+        `def test_smoke():\n    assert True\n`
+      );
+      writeProjectFile('.gitignore', `__pycache__\n*.pyc\n.pytest_cache\nvenv\n.env\n`);
+      break;
+    }
+
+    default: {
+      writeProjectFile(
+        'README.md',
+        `# ${safeName}\n\nProject initialized by Deadline execution management system.\n`
+      );
+      writeProjectFile('.gitignore', `node_modules\n.DS_Store\n`);
+      break;
+    }
+  }
+
+  // Optional Git init
+  if (initGit) {
+    try {
+      spawnSync('git', ['init'], { cwd: targetDir, timeout: 5000 });
+      createdFiles.push('.git');
+    } catch {
+      /* git init optional */
+    }
+  }
+
+  writeAuditLog('INIT_TEMPLATE', { projectPath: targetDir, template: templateId, files: createdFiles });
+  return { success: true, createdFiles, template: templateId };
+}
+
+// Executes dependency install with safety validations
+function runDependencyInstall(projectPath, packageManager, packages = []) {
+  const validation = validateProjectPath(projectPath);
+  if (!validation.valid) {
+    return { success: false, error: validation.error };
+  }
+
+  const targetDir = validation.resolvedPath;
+  const pm = packageManager || 'npm';
+
+  let bin;
+  let args;
+
+  if (pm === 'pnpm') {
+    bin = 'pnpm';
+    args = packages.length > 0 ? ['add', ...packages] : ['install'];
+  } else if (pm === 'yarn') {
+    bin = 'yarn';
+    args = packages.length > 0 ? ['add', ...packages] : ['install'];
+  } else if (pm === 'pip') {
+    bin = 'python3';
+    args = packages.length > 0
+      ? ['-m', 'pip', 'install', ...packages]
+      : ['-m', 'pip', 'install', '-r', 'requirements.txt'];
+  } else {
+    bin = 'npm';
+    args = packages.length > 0 ? ['install', ...packages] : ['install'];
+  }
+
+  const run = spawnSync(bin, args, {
+    cwd: targetDir,
+    encoding: 'utf8',
+    timeout: 180000, // 3 minutes
+  });
+
+  const stdout = (run.stdout || '').trim();
+  const stderr = (run.stderr || '').trim();
+  const exitCode = run.status ?? (run.error ? 1 : 0);
+
+  writeAuditLog('INSTALL_DEPS', { projectPath: targetDir, packageManager: pm, exitCode });
+
+  return {
+    success: exitCode === 0,
+    stdout,
+    stderr,
+    exitCode,
+    error: exitCode !== 0 ? stderr || stdout || 'Dependency installation failed.' : undefined,
+  };
+}
+
+// Verifies project environment readiness
+function verifyProjectEnv(projectPath, validationCommand) {
+  const validation = validateProjectPath(projectPath);
+  if (!validation.valid) {
+    return {
+      projectPath,
+      isReady: false,
+      directoryExists: false,
+      manifestExists: false,
+      dependenciesInstalled: false,
+      gitInitialized: false,
+      buildCheckPassed: false,
+      issues: [validation.error || 'Invalid project path'],
+      verifiedAt: new Date().toISOString(),
+    };
+  }
+
+  const targetDir = validation.resolvedPath;
+  const directoryExists = fs.existsSync(targetDir);
+  const gitInitialized = fs.existsSync(path.join(targetDir, '.git'));
+  const hasPkg = fs.existsSync(path.join(targetDir, 'package.json'));
+  const hasReq = fs.existsSync(path.join(targetDir, 'requirements.txt'));
+  const manifestExists = hasPkg || hasReq;
+  const hasNodeModules = fs.existsSync(path.join(targetDir, 'node_modules'));
+  const dependenciesInstalled = hasNodeModules || hasReq;
+
+  const issues = [];
+  if (!directoryExists) issues.push('Project directory does not exist.');
+  if (!manifestExists) issues.push('No project manifest (package.json or requirements.txt) found.');
+  if (hasPkg && !hasNodeModules) issues.push('Dependencies are not installed (node_modules is missing).');
+
+  let buildCheckPassed = true;
+  let buildOutput = '';
+
+  if (validationCommand && manifestExists) {
+    try {
+      const parts = validationCommand.split(' ');
+      const check = spawnSync(parts[0], parts.slice(1), {
+        cwd: targetDir,
+        encoding: 'utf8',
+        timeout: 60000,
+      });
+      buildOutput = (check.stdout || check.stderr || '').trim();
+      buildCheckPassed = check.status === 0;
+      if (!buildCheckPassed) {
+        issues.push(`Validation command "${validationCommand}" returned exit code ${check.status}`);
+      }
+    } catch (err) {
+      buildCheckPassed = false;
+      issues.push(`Failed to run validation command: ${err.message}`);
+    }
+  }
+
+  const isReady = directoryExists && manifestExists && issues.length === 0;
+
+  return {
+    projectPath: targetDir,
+    isReady,
+    directoryExists,
+    manifestExists,
+    dependenciesInstalled,
+    gitInitialized,
+    buildCheckPassed,
+    buildOutput,
+    issues,
+    verifiedAt: new Date().toISOString(),
+  };
+}
+
 // CORS & Auth Checker
 function checkSecurity(req, res) {
   // 1. Origin header validation
@@ -724,6 +1351,112 @@ const server = http.createServer(async (req, res) => {
     } catch (e) {
       res.writeHead(500, { 'Content-Type': 'application/json' });
       res.end(JSON.stringify({ logs: [], error: e.message }));
+    }
+    return;
+  }
+
+  // 11. POST /workspace/pick-folder
+  if (pathname === '/workspace/pick-folder' && req.method === 'POST') {
+    try {
+      const body = await parseBody(req);
+      const result = pickFolderNative(body.prompt, body.startingDirectory);
+      res.writeHead(result.success ? 200 : 400, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify(result));
+    } catch (e) {
+      res.writeHead(500, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ success: false, error: e.message }));
+    }
+    return;
+  }
+
+  // 12. GET /system/runtimes
+  if (pathname === '/system/runtimes' && req.method === 'GET') {
+    try {
+      const runtimes = detectRuntimes();
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ runtimes }));
+    } catch (e) {
+      res.writeHead(500, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ error: e.message }));
+    }
+    return;
+  }
+
+  // 13. POST /project/inspect
+  if (pathname === '/project/inspect' && req.method === 'POST') {
+    try {
+      const body = await parseBody(req);
+      const inspection = inspectProject(body.projectPath);
+      res.writeHead(inspection.valid ? 200 : 400, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify(inspection));
+    } catch (e) {
+      res.writeHead(500, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ valid: false, error: e.message }));
+    }
+    return;
+  }
+
+  // 14. POST /project/create-directory
+  if (pathname === '/project/create-directory' && req.method === 'POST') {
+    try {
+      const body = await parseBody(req);
+      const resData = createProjectDirectory(body.parentDirectory, body.folderName);
+      res.writeHead(resData.success ? 200 : 400, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify(resData));
+    } catch (e) {
+      res.writeHead(500, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ success: false, error: e.message }));
+    }
+    return;
+  }
+
+  // 15. POST /project/initialize-template
+  if (pathname === '/project/initialize-template' && req.method === 'POST') {
+    try {
+      const body = await parseBody(req);
+      const resData = initializeTemplateFiles(
+        body.projectPath,
+        body.templateId,
+        body.projectName,
+        body.initGit !== false
+      );
+      res.writeHead(resData.success ? 200 : 400, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify(resData));
+    } catch (e) {
+      res.writeHead(500, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ success: false, error: e.message }));
+    }
+    return;
+  }
+
+  // 16. POST /project/install-dependencies
+  if (pathname === '/project/install-dependencies' && req.method === 'POST') {
+    try {
+      const body = await parseBody(req);
+      const resData = runDependencyInstall(
+        body.projectPath,
+        body.packageManager,
+        body.packages || []
+      );
+      res.writeHead(resData.success ? 200 : 400, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify(resData));
+    } catch (e) {
+      res.writeHead(500, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ success: false, error: e.message }));
+    }
+    return;
+  }
+
+  // 17. POST /project/verify-environment
+  if (pathname === '/project/verify-environment' && req.method === 'POST') {
+    try {
+      const body = await parseBody(req);
+      const report = verifyProjectEnv(body.projectPath, body.validationCommand);
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify(report));
+    } catch (e) {
+      res.writeHead(500, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ isReady: false, error: e.message }));
     }
     return;
   }

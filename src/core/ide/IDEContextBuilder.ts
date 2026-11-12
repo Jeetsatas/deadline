@@ -56,6 +56,17 @@ ${context.expectedOutput}
 ### Minimum Acceptable Output (Fallback MVP)
 ${context.minimumAcceptableOutput || context.expectedOutput}
 ${context.userInstructions ? `\n### Developer Focus & Custom Instructions\n${context.userInstructions}\n` : ''}
+${context.projectConfig ? `
+---
+
+## 1.5. Verified Project Environment & Configuration
+
+- **Project Name:** ${(context.projectConfig as Record<string, unknown>).projectName || context.deadlineTitle}
+- **Project Template / Stack:** ${(context.projectConfig as Record<string, unknown>).projectType || 'Standard'}
+- **Language:** ${(context.projectConfig as Record<string, unknown>).language || 'TypeScript'}
+- **Package Manager:** ${(context.projectConfig as Record<string, unknown>).packageManager || 'npm'}
+- **Environment Status:** ${context.environmentVerification && (context.environmentVerification as Record<string, unknown>).isReady ? '✅ Verified Ready (Dependencies installed & build verified)' : 'Configured'}
+` : ''}
 ---
 
 ## 2. Tactical Understanding & Suggested Approach
