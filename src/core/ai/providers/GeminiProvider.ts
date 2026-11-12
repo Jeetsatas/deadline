@@ -11,7 +11,7 @@ import {
 import { aiContextBuilder } from '../AIContextBuilder';
 import { validateEndpointUrl } from '@/core/security/ICredentialStorage';
 
-interface GoogleModelEntry {
+export interface GoogleModelEntry {
   name: string;
   displayName?: string;
   description?: string;
@@ -19,6 +19,127 @@ interface GoogleModelEntry {
   outputTokenLimit?: number;
   supportedGenerationMethods?: string[];
   version?: string;
+  supportedModalities?: string[];
+  outputModalities?: string[];
+}
+
+/**
+ * Evaluates whether a Google Gemini model entry represents a general-purpose
+ * text-generation model suitable for synthesizing structured execution plans.
+ *
+ * Excludes:
+ * - Text-to-speech (TTS) models (e.g. gemini-*-tts)
+ * - Audio-generation / speech synthesis models
+ * - Embedding-only models (embedContent, batchEmbedContents)
+ * - Image-generation models (e.g. imagen-*)
+ * - Question-answering evaluation or specialized non-text models (e.g. aqa)
+ * - Models with zero or non-text output capacity
+ */
+export function isCompatibleTextModel(model: GoogleModelEntry): boolean {
+  if (!model || !model.name) return false;
+
+  const rawName = model.name.toLowerCase();
+  const displayName = (model.displayName || '').toLowerCase();
+  const description = (model.description || '').toLowerCase();
+  const cleanId = rawName.replace(/^models\//i, '');
+
+  // 1. Must support generateContent
+  const methods = model.supportedGenerationMethods;
+  if (!Array.isArray(methods) || !methods.includes('generateContent')) {
+    return false;
+  }
+
+  // 2. Check output modalities if present (must include TEXT if list provided)
+  if (Array.isArray(model.outputModalities) && model.outputModalities.length > 0) {
+    const outMods = model.outputModalities.map((m) => String(m).toUpperCase());
+    if (!outMods.includes('TEXT')) {
+      return false;
+    }
+  }
+
+  // 3. Exclude Text-To-Speech (TTS) models
+  if (
+    cleanId.includes('tts') ||
+    displayName.includes('tts') ||
+    description.includes('tts') ||
+    cleanId.includes('text-to-speech') ||
+    displayName.includes('text-to-speech') ||
+    description.includes('text-to-speech')
+  ) {
+    return false;
+  }
+
+  // 4. Exclude speech synthesis and audio-generation models
+  if (
+    cleanId.includes('audio') ||
+    displayName.includes('audio') ||
+    cleanId.includes('speech') ||
+    displayName.includes('speech') ||
+    description.includes('speech') ||
+    description.includes('audio generation') ||
+    description.includes('audio synthesis')
+  ) {
+    return false;
+  }
+
+  // 5. Exclude embedding models
+  if (
+    cleanId.includes('embedding') ||
+    cleanId.includes('embed') ||
+    displayName.includes('embedding') ||
+    description.includes('embedding')
+  ) {
+    return false;
+  }
+
+  // 6. Exclude image generation models (Imagen)
+  if (
+    cleanId.includes('imagen') ||
+    displayName.includes('imagen') ||
+    description.includes('image generation')
+  ) {
+    return false;
+  }
+
+  // 7. Exclude specialized non-text evaluation models
+  if (cleanId === 'aqa' || cleanId.startsWith('aqa-') || cleanId.includes('attributed-question')) {
+    return false;
+  }
+
+  // 8. Output token capacity check: if specified and > 0, must be at least 1000
+  if (typeof model.outputTokenLimit === 'number' && model.outputTokenLimit > 0 && model.outputTokenLimit < 1000) {
+    return false;
+  }
+
+  // 9. Input or output limit of 0 means cannot generate text
+  if (model.inputTokenLimit === 0 || model.outputTokenLimit === 0) {
+    return false;
+  }
+
+  return true;
+}
+
+interface CandidatePart {
+  text?: string;
+  thought?: boolean;
+}
+
+interface CandidateContent {
+  parts?: CandidatePart[];
+  role?: string;
+}
+
+interface GeminiCandidate {
+  content?: CandidateContent;
+  finishReason?: string;
+}
+
+interface GeminiErrorBody {
+  error?: {
+    code?: number;
+    message?: string;
+    status?: string;
+  };
 }
 
 export class GeminiProvider implements IAIProvider {
@@ -44,6 +165,24 @@ export class GeminiProvider implements IAIProvider {
   cleanModelId(modelId?: string): string {
     const raw = (modelId || 'gemini-2.0-flash').trim();
     return raw.replace(/^models\//i, '');
+  }
+
+  /**
+   * Checks whether a model ID represents a non-text model unsuitable for execution planning
+   * (e.g. text-to-speech, audio-only, embedding, image generation, or question answering).
+   */
+  isNonTextModelId(modelId?: string): boolean {
+    if (!modelId) return false;
+    const cleanId = this.cleanModelId(modelId).toLowerCase();
+    return (
+      cleanId.includes('tts') ||
+      cleanId.includes('speech') ||
+      cleanId.includes('audio') ||
+      cleanId.includes('embed') ||
+      cleanId.includes('imagen') ||
+      cleanId === 'aqa' ||
+      cleanId.startsWith('aqa-')
+    );
   }
 
   /**
@@ -247,9 +386,9 @@ export class GeminiProvider implements IAIProvider {
         };
       }
 
-      // Filter strictly for models supporting 'generateContent'
+      // Filter strictly for compatible text-generation models (excludes TTS, audio, embedding, imagen)
       const filtered: AIModelMetadata[] = (data.models as GoogleModelEntry[])
-        .filter((m) => Array.isArray(m.supportedGenerationMethods) && m.supportedGenerationMethods.includes('generateContent'))
+        .filter(isCompatibleTextModel)
         .map((m) => {
           const id = this.cleanModelId(m.name);
           return {
@@ -348,6 +487,14 @@ export class GeminiProvider implements IAIProvider {
 
     const targetBaseUrl = this.getTargetBaseUrl(baseUrl);
     const model = this.cleanModelId(modelId);
+
+    if (this.isNonTextModelId(model)) {
+      return {
+        success: false,
+        message: `Model "${model}" does not support text execution planning (unsupported capability: text-to-speech, audio-only, or embedding model). Please select a text model like Gemini 2.0 Flash.`,
+        model,
+      };
+    }
 
     // Mock bypass only for synthetic test runs with 'mock_' prefix
     if (key.startsWith('mock_')) {
@@ -471,6 +618,195 @@ export class GeminiProvider implements IAIProvider {
   }
 
   /**
+   * Helper to perform generateContent HTTP request to Gemini API.
+   * Gracefully handles thinkingConfig and responseSchema incompatibilities on older/proxy endpoints.
+   */
+  private async executeGenerateRequest(
+    targetBaseUrl: string,
+    model: string,
+    key: string,
+    systemPrompt: string,
+    promptWithSchema: string,
+    outputTokens: number,
+    useSchema: boolean,
+    thinkingBudget?: number
+  ): Promise<{ response: Response }> {
+    const generationConfig: Record<string, unknown> = {
+      temperature: 0.2,
+      maxOutputTokens: outputTokens,
+      responseMimeType: 'application/json',
+    };
+
+    if (useSchema) {
+      generationConfig.responseSchema = {
+        type: 'OBJECT',
+        properties: {
+          taskUnderstanding: { type: 'STRING' },
+          suggestedApproach: { type: 'STRING' },
+          suggestedMilestones: {
+            type: 'ARRAY',
+            items: {
+              type: 'OBJECT',
+              properties: {
+                title: { type: 'STRING' },
+                description: { type: 'STRING' },
+                order: { type: 'INTEGER' },
+                isCriticalPath: { type: 'BOOLEAN' },
+              },
+              required: ['title', 'description', 'order', 'isCriticalPath'],
+            },
+          },
+          requiredResources: {
+            type: 'ARRAY',
+            items: { type: 'STRING' },
+          },
+          firstActionableStep: { type: 'STRING' },
+          deliverableSpecificGuidance: { type: 'STRING' },
+        },
+        required: [
+          'taskUnderstanding',
+          'suggestedApproach',
+          'suggestedMilestones',
+          'requiredResources',
+          'firstActionableStep',
+        ],
+      };
+    }
+
+    if (typeof thinkingBudget === 'number' && thinkingBudget >= 0) {
+      generationConfig.thinkingConfig = {
+        thinkingBudget,
+      };
+    }
+
+    const requestBody: Record<string, unknown> = {
+      systemInstruction: {
+        parts: [{ text: systemPrompt }],
+      },
+      contents: [
+        {
+          role: 'user',
+          parts: [{ text: promptWithSchema }],
+        },
+      ],
+      generationConfig,
+    };
+
+    let response = await fetch(`${targetBaseUrl}/models/${model}:generateContent`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-goog-api-key': key,
+      },
+      body: JSON.stringify(requestBody),
+      signal: AbortSignal.timeout(35000),
+    });
+
+    // If 400 Bad Request: could be unrecognized thinkingConfig, responseSchema, or systemInstruction
+    if (!response.ok && response.status === 400) {
+      const errClone = await response.clone().json().catch(() => null);
+      const msg = (errClone?.error?.message || '').toLowerCase();
+
+      // If thinkingConfig is unrecognized, remove it and retry
+      if (generationConfig.thinkingConfig && (msg.includes('thinkingconfig') || msg.includes('thinking_config') || msg.includes('unknown field'))) {
+        delete generationConfig.thinkingConfig;
+        response = await fetch(`${targetBaseUrl}/models/${model}:generateContent`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'x-goog-api-key': key },
+          body: JSON.stringify(requestBody),
+          signal: AbortSignal.timeout(35000),
+        });
+      }
+
+      // If responseSchema is unrecognized, remove it and retry with just application/json
+      if (!response.ok && response.status === 400 && generationConfig.responseSchema) {
+        delete generationConfig.responseSchema;
+        response = await fetch(`${targetBaseUrl}/models/${model}:generateContent`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'x-goog-api-key': key },
+          body: JSON.stringify(requestBody),
+          signal: AbortSignal.timeout(35000),
+        });
+      }
+
+      // If still 400 (e.g. systemInstruction unsupported), fall back to combined user prompt
+      if (!response.ok && response.status === 400) {
+        const fallbackBody = {
+          contents: [
+            {
+              role: 'user',
+              parts: [{ text: `${systemPrompt}\n\n${promptWithSchema}` }],
+            },
+          ],
+          generationConfig: {
+            temperature: 0.2,
+            maxOutputTokens: outputTokens,
+            responseMimeType: 'application/json',
+          },
+        };
+
+        response = await fetch(`${targetBaseUrl}/models/${model}:generateContent`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'x-goog-api-key': key },
+          body: JSON.stringify(fallbackBody),
+          signal: AbortSignal.timeout(35000),
+        });
+      }
+    }
+
+    return { response };
+  }
+
+  /**
+   * Extracts text from candidate parts, explicitly excluding thinking/thought parts.
+   */
+  private extractCandidateText(candidate?: GeminiCandidate): { text: string; hasOnlyThoughts: boolean; thoughtCount: number } {
+    const parts: CandidatePart[] = candidate?.content?.parts || [];
+    const textParts = parts.filter((p) => !p.thought && typeof p.text === 'string');
+    const thoughtParts = parts.filter((p) => p.thought);
+    const joinedText = textParts.map((p) => p.text!).join('\n').trim();
+    return {
+      text: joinedText,
+      hasOnlyThoughts: parts.length > 0 && textParts.length === 0 && thoughtParts.length > 0,
+      thoughtCount: thoughtParts.length,
+    };
+  }
+
+  /**
+   * Categorizes HTTP errors from Google Gemini API with descriptive, actionable error messages.
+   */
+  private handleHttpError(response: Response, errorBody: GeminiErrorBody | null, model: string): never {
+    const status = errorBody?.error?.status;
+    const errorMsg = errorBody?.error?.message || `HTTP ${response.status} ${response.statusText}`;
+
+    if (
+      response.status === 404 ||
+      status === 'NOT_FOUND' ||
+      errorMsg.toLowerCase().includes('not found') ||
+      errorMsg.toLowerCase().includes('is not found')
+    ) {
+      throw new Error('The selected model is no longer available for this API key. Refresh models and select another model.');
+    }
+
+    if (response.status === 401 || status === 'UNAUTHENTICATED' || errorMsg.includes('API_KEY_INVALID') || errorMsg.includes('API key not valid')) {
+      throw new Error('Authentication failed. Invalid Google Gemini API key. Please check your key from Google AI Studio.');
+    }
+
+    if (response.status === 429 || status === 'RESOURCE_EXHAUSTED') {
+      if (errorMsg.toLowerCase().includes('quota') || errorMsg.toLowerCase().includes('exhausted')) {
+        throw new Error('Google Gemini quota exceeded (RESOURCE_EXHAUSTED). Please check your Google AI Studio plan or quota limits.');
+      }
+      throw new Error('Google Gemini rate limit exceeded (429 Too Many Requests). Please wait a moment before retrying.');
+    }
+
+    if (response.status === 403 || status === 'PERMISSION_DENIED') {
+      throw new Error(`Access denied for model "${model}". The API key lacks permission or the Generative Language API is disabled.`);
+    }
+
+    throw new Error(`Google Gemini error: ${errorMsg}`);
+  }
+
+  /**
    * Generates a structured AI execution plan using Google Gemini API.
    * Converts structured deadline context into an actionable execution roadmap.
    */
@@ -483,6 +819,13 @@ export class GeminiProvider implements IAIProvider {
     const key = apiKey.trim();
     const model = this.cleanModelId(modelId);
     const targetBaseUrl = this.getTargetBaseUrl(baseUrl);
+
+    // 1. Incompatible capability check: Reject TTS, audio-only, embedding, image models immediately
+    if (this.isNonTextModelId(model)) {
+      throw new Error(
+        `Model "${model}" does not support text execution plan generation (unsupported model capability: text-to-speech, audio-only, or embedding model). Please select a compatible text-generation model like Gemini 2.0 Flash or Gemini 1.5 Pro.`
+      );
+    }
 
     // Fail immediately if an unavailable or deprecated model identifier was requested
     if (model.includes('unavailable') || model.includes('deprecated')) {
@@ -499,7 +842,7 @@ export class GeminiProvider implements IAIProvider {
 
     const promptWithSchema = `${userPrompt}
 
-IMPORTANT: Provide your response as a valid JSON object matching this schema:
+IMPORTANT: Provide your response strictly as a valid JSON object matching this schema:
 {
   "taskUnderstanding": "Summary of requirements and target output",
   "suggestedApproach": "Tactical execution strategy",
@@ -516,101 +859,127 @@ IMPORTANT: Provide your response as a valid JSON object matching this schema:
   "deliverableSpecificGuidance": "Specific instructions tailored for ${context.deliverableType}"
 }`;
 
-    const requestBody = {
-      systemInstruction: {
-        parts: [{ text: systemPrompt }],
-      },
-      contents: [
-        {
-          role: 'user',
-          parts: [{ text: promptWithSchema }],
-        },
-      ],
-      generationConfig: {
-        temperature: 0.2,
-        maxOutputTokens: 2500,
-        responseMimeType: 'application/json',
-      },
-    };
+    // Token limit setup: generous 8192 output tokens to prevent MAX_TOKENS truncation
+    const initialOutputTokens = 8192;
+    const isThinkingModel = model.includes('thinking') || model.includes('2.5');
+    // If thinking model, limit thinking budget to 1024 so thinking cannot consume all output tokens
+    const thinkingBudget = isThinkingModel ? 1024 : undefined;
 
     const startTime = performance.now();
     try {
-      let response = await fetch(`${targetBaseUrl}/models/${model}:generateContent`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'x-goog-api-key': key,
-        },
-        body: JSON.stringify(requestBody),
-        signal: AbortSignal.timeout(30000),
-      });
+      // First generation attempt
+      const execRes = await this.executeGenerateRequest(
+        targetBaseUrl,
+        model,
+        key,
+        systemPrompt,
+        promptWithSchema,
+        initialOutputTokens,
+        true,
+        thinkingBudget
+      );
 
-      // If systemInstruction or responseMimeType fails on custom proxy, fall back to simple contents
-      if (!response.ok && response.status === 400) {
-        const fallbackBody = {
-          contents: [
-            {
-              role: 'user',
-              parts: [{ text: `${systemPrompt}\n\n${promptWithSchema}` }],
-            },
-          ],
-          generationConfig: {
-            temperature: 0.2,
-            maxOutputTokens: 2500,
-          },
-        };
-
-        response = await fetch(`${targetBaseUrl}/models/${model}:generateContent`, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'x-goog-api-key': key,
-          },
-          body: JSON.stringify(fallbackBody),
-          signal: AbortSignal.timeout(30000),
-        });
-      }
-
-      const latencyMs = Math.round(performance.now() - startTime);
+      const response = execRes.response;
 
       if (!response.ok) {
         const errorBody = await response.json().catch(() => null);
-        const status = errorBody?.error?.status;
-        const errorMsg = errorBody?.error?.message || `HTTP ${response.status} ${response.statusText}`;
-
-        if (
-          response.status === 404 ||
-          status === 'NOT_FOUND' ||
-          errorMsg.toLowerCase().includes('not found') ||
-          errorMsg.toLowerCase().includes('is not found')
-        ) {
-          throw new Error('The selected model is no longer available for this API key. Refresh models and select another model.');
-        }
-
-        if (response.status === 401 || status === 'UNAUTHENTICATED' || errorMsg.includes('API_KEY_INVALID')) {
-          throw new Error('Authentication failed. Invalid Google Gemini API key. Please check your key from Google AI Studio.');
-        }
-
-        if (response.status === 429 || status === 'RESOURCE_EXHAUSTED') {
-          throw new Error('Google Gemini quota or rate limit exceeded (RESOURCE_EXHAUSTED). Please check your Google AI Studio plan or retry shortly.');
-        }
-
-        if (response.status === 403 || status === 'PERMISSION_DENIED') {
-          throw new Error(`Access denied for model "${model}". The API key lacks permission or the Generative Language API is disabled.`);
-        }
-
-        throw new Error(`Google Gemini error: ${errorMsg}`);
+        this.handleHttpError(response, errorBody, model);
       }
 
       const data = await response.json();
-      const rawText = data?.candidates?.[0]?.content?.parts?.[0]?.text || '';
+      const candidate = data?.candidates?.[0];
+      const finishReason = candidate?.finishReason || data?.promptFeedback?.blockReason;
+      const { text: rawText, hasOnlyThoughts } = this.extractCandidateText(candidate);
+      const usage = data?.usageMetadata;
+
+      // Check safety blocking
+      if (finishReason === 'SAFETY' || data?.promptFeedback?.blockReason === 'SAFETY') {
+        throw new Error(
+          `Google Gemini safety filter blocked the response (Safety Reason: ${finishReason || data?.promptFeedback?.blockReason || 'SAFETY'}).`
+        );
+      }
+
+      // Check MAX_TOKENS handling & intelligent one-time recovery
+      if (finishReason === 'MAX_TOKENS' || hasOnlyThoughts || (!rawText && finishReason)) {
+        // First check if rawText happens to be 100% complete valid JSON with all 5 sections
+        if (rawText) {
+          try {
+            const plan = this.parseAndValidatePlan(context, rawText, model);
+            const latencyMs = Math.round(performance.now() - startTime);
+            return {
+              ...plan,
+              latencyMs,
+            };
+          } catch {
+            // Plan incomplete or truncated, continue to one-time retry
+          }
+        }
+
+        // Attempt one-time retry with doubled token budget (16384) and explicit conciseness directive
+        const retryOutputTokens = 16384;
+        const retryPrompt = `${promptWithSchema}\n\nNOTE: Be concise and output ONLY the complete JSON object directly so all 5 sections fit within output capacity without truncation.`;
+
+        const retryRes = await this.executeGenerateRequest(
+          targetBaseUrl,
+          model,
+          key,
+          systemPrompt,
+          retryPrompt,
+          retryOutputTokens,
+          true,
+          1024
+        );
+
+        if (retryRes.response.ok) {
+          const retryData = await retryRes.response.json();
+          const retryCandidate = retryData?.candidates?.[0];
+          const retryFinishReason = retryCandidate?.finishReason;
+          const retryExtract = this.extractCandidateText(retryCandidate);
+          const retryUsage = retryData?.usageMetadata;
+
+          if (retryExtract.text) {
+            try {
+              const retryPlan = this.parseAndValidatePlan(context, retryExtract.text, model);
+              const latencyMs = Math.round(performance.now() - startTime);
+              return {
+                ...retryPlan,
+                latencyMs,
+              };
+            } catch (retryParseErr) {
+              if (retryFinishReason === 'MAX_TOKENS') {
+                const tokensUsed = retryUsage?.candidatesTokenCount || retryOutputTokens;
+                const err = new Error(
+                  `Google Gemini exceeded maximum token limit (MAX_TOKENS). The execution plan was truncated after ${tokensUsed} tokens during retry. Please select another text model (such as Gemini 2.5 Flash or Gemini 1.5 Pro) with higher output capacity or simplify the project scope.`
+                );
+                (err as unknown as { cause: unknown }).cause = retryParseErr;
+                throw err;
+              }
+              throw retryParseErr;
+            }
+          }
+
+          if (retryFinishReason === 'MAX_TOKENS') {
+            const tokensUsed = retryUsage?.candidatesTokenCount || retryOutputTokens;
+            throw new Error(
+              `Google Gemini exceeded maximum token limit (MAX_TOKENS). The execution plan was truncated after ${tokensUsed} tokens. Please select another text model (such as Gemini 2.5 Flash or Gemini 1.5 Pro) with higher output capacity.`
+            );
+          }
+        }
+
+        // If retry didn't produce valid plan, throw descriptive MAX_TOKENS error
+        const tokensUsed = usage?.candidatesTokenCount || initialOutputTokens;
+        throw new Error(
+          `Google Gemini exceeded maximum token limit (MAX_TOKENS). The execution plan was truncated after ${tokensUsed} tokens. Please select another text model (such as Gemini 2.5 Flash or Gemini 1.5 Pro) with higher output capacity.`
+        );
+      }
 
       if (!rawText.trim()) {
-        const blockReason = data?.promptFeedback?.blockReason || data?.candidates?.[0]?.finishReason;
+        const blockReason = data?.promptFeedback?.blockReason || candidate?.finishReason;
         throw new Error(`Google Gemini returned an empty response. Finish/Block Reason: ${blockReason || 'Unknown'}`);
       }
 
-      const plan = this.parsePlanText(context, rawText, model);
+      const plan = this.parseAndValidatePlan(context, rawText, model);
+      const latencyMs = Math.round(performance.now() - startTime);
       return {
         ...plan,
         latencyMs,
@@ -624,9 +993,10 @@ IMPORTANT: Provide your response as a valid JSON object matching this schema:
   }
 
   /**
-   * Parses JSON text from Gemini response into validated AIExecutionPlan.
+   * Parses JSON text from Gemini response into strictly validated AIExecutionPlan.
+   * Requires all 5 sections to be non-empty. Never uses synthetic fallbacks.
    */
-  private parsePlanText(context: AIContext, text: string, model: string): AIExecutionPlan {
+  private parseAndValidatePlan(context: AIContext, text: string, model: string): AIExecutionPlan {
     let cleaned = text.trim();
     // Strip markdown code fences if wrapped in ```json ... ```
     cleaned = cleaned
@@ -641,51 +1011,9 @@ IMPORTANT: Provide your response as a valid JSON object matching this schema:
       cleaned = jsonMatch[0];
     }
 
+    let parsed: Record<string, unknown>;
     try {
-      const parsed = JSON.parse(cleaned);
-
-      if (parsed && typeof parsed === 'object') {
-        const suggestedMilestones = Array.isArray(parsed.suggestedMilestones)
-          ? parsed.suggestedMilestones.map((m: Record<string, unknown>, idx: number) => ({
-              title: String(m.title || `Milestone ${idx + 1}`),
-              description: String(m.description || ''),
-              order: Number(m.order) || idx + 1,
-              isCriticalPath: Boolean(m.isCriticalPath ?? true),
-            }))
-          : [];
-
-        const requiredResources = Array.isArray(parsed.requiredResources)
-          ? parsed.requiredResources.map(String)
-          : [];
-
-        return {
-          deadlineId: context.deadlineId,
-          taskUnderstanding:
-            String(parsed.taskUnderstanding || '') ||
-            `Target Output: ${context.expectedOutput} (Due: ${context.deadlineDate} ${context.deadlineTime})`,
-          suggestedApproach:
-            String(parsed.suggestedApproach || '') ||
-            `Execution Approach: ${context.executionApproach || 'prototype_first'}`,
-          suggestedMilestones:
-            suggestedMilestones.length > 0
-              ? suggestedMilestones
-              : this.synthesizePlanFromContext(context, model).suggestedMilestones,
-          requiredResources:
-            requiredResources.length > 0
-              ? requiredResources
-              : ['Standard development / authoring environment'],
-          firstActionableStep:
-            String(parsed.firstActionableStep || '') ||
-            'Review target output requirements and initiate core deliverable structure.',
-          deliverableSpecificGuidance:
-            String(parsed.deliverableSpecificGuidance || '') ||
-            `Tailored for ${context.deliverableType}: focus on output completeness over task volume.`,
-          generatedAt: new Date().toISOString(),
-          providerId: 'gemini',
-          modelId: model,
-          rawPromptSummary: text.slice(0, 1000),
-        };
-      }
+      parsed = JSON.parse(cleaned);
     } catch (parseErr) {
       const err = new Error(
         `Failed to parse structured JSON from Gemini response: ${(parseErr as Error).message}. Raw response: ${text.slice(0, 300)}`
@@ -694,7 +1022,72 @@ IMPORTANT: Provide your response as a valid JSON object matching this schema:
       throw err;
     }
 
-    throw new Error(`Invalid JSON format returned by Gemini: ${text.slice(0, 300)}`);
+    if (!parsed || typeof parsed !== 'object') {
+      throw new Error(`Invalid JSON format returned by Gemini: ${text.slice(0, 300)}`);
+    }
+
+    // Validate ALL 5 REQUIRED SECTIONS (never substitute mock or synthetic fallbacks)
+    const taskUnderstanding = String(parsed.taskUnderstanding || '').trim();
+    const suggestedApproach = String(parsed.suggestedApproach || '').trim();
+    const firstActionableStep = String(parsed.firstActionableStep || '').trim();
+    const deliverableGuidance = String(parsed.deliverableSpecificGuidance || '').trim();
+
+    const rawMilestones = Array.isArray(parsed.suggestedMilestones) ? parsed.suggestedMilestones : [];
+    const rawResources = Array.isArray(parsed.requiredResources) ? parsed.requiredResources : [];
+
+    const missingSections: string[] = [];
+    if (!taskUnderstanding || taskUnderstanding.length < 5) {
+      missingSections.push('Task Understanding');
+    }
+    if (!suggestedApproach || suggestedApproach.length < 5) {
+      missingSections.push('Suggested Approach');
+    }
+    if (rawMilestones.length === 0) {
+      missingSections.push('Execution Milestones');
+    }
+    if (rawResources.length === 0) {
+      missingSections.push('Required Resources');
+    }
+    if (!firstActionableStep || firstActionableStep.length < 5) {
+      missingSections.push('First Actionable Step');
+    }
+
+    if (missingSections.length > 0) {
+      throw new Error(
+        `The model response is incomplete and missing required execution plan sections: ${missingSections.join(', ')}.`
+      );
+    }
+
+    const suggestedMilestones = rawMilestones.map((m: Record<string, unknown>, idx: number) => ({
+      title: String(m.title || `Milestone ${idx + 1}`).trim(),
+      description: String(m.description || '').trim(),
+      order: Number(m.order) || idx + 1,
+      isCriticalPath: Boolean(m.isCriticalPath ?? true),
+    }));
+
+    const requiredResources = rawResources.map(String).map((r: string) => r.trim()).filter(Boolean);
+
+    return {
+      deadlineId: context.deadlineId,
+      taskUnderstanding,
+      suggestedApproach,
+      suggestedMilestones,
+      requiredResources,
+      firstActionableStep,
+      deliverableSpecificGuidance:
+        deliverableGuidance || `Focus on tangible output completeness for ${context.deliverableType}.`,
+      generatedAt: new Date().toISOString(),
+      providerId: 'gemini',
+      modelId: model,
+      rawPromptSummary: text.slice(0, 1000),
+    };
+  }
+
+  /**
+   * Adapter for legacy callers. Invokes parseAndValidatePlan.
+   */
+  parsePlanText(context: AIContext, text: string, model: string): AIExecutionPlan {
+    return this.parseAndValidatePlan(context, text, model);
   }
 
   /**

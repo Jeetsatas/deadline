@@ -194,8 +194,22 @@ export const CreateDeadlineModal: React.FC = () => {
   // Default model synchronizer
   useEffect(() => {
     if (aiProviderId === 'gemini') {
-      const geminiDiscovered = discoveredModels['gemini'];
-      const defaultModel = configuredProviders['gemini']?.selectedModelId || geminiDiscovered?.[0]?.id || 'gemini-2.0-flash';
+      const geminiDiscovered = (discoveredModels['gemini'] || []).filter((m) => {
+        const id = m.id.toLowerCase();
+        const name = (m.displayName || '').toLowerCase();
+        return (
+          !id.includes('tts') &&
+          !name.includes('tts') &&
+          !id.includes('speech') &&
+          !id.includes('audio') &&
+          !id.includes('embed') &&
+          !id.includes('imagen') &&
+          id !== 'aqa'
+        );
+      });
+      const selectedId = configuredProviders['gemini']?.selectedModelId;
+      const isSelectedCompatible = selectedId && geminiDiscovered.some((m) => m.id === selectedId);
+      const defaultModel = isSelectedCompatible ? selectedId : (geminiDiscovered?.[0]?.id || 'gemini-2.0-flash');
       setAiModelId(defaultModel);
     } else if (aiProviderId === 'anthropic') {
       setAiModelId('claude-3-7-sonnet-latest');
@@ -1337,18 +1351,45 @@ export const CreateDeadlineModal: React.FC = () => {
                           onChange={(e) => setAiModelId(e.target.value)}
                           className="w-full h-8 px-2.5 rounded-md border border-input bg-background text-xs font-mono cursor-pointer"
                         >
-                          {(discoveredModels['gemini'] || []).length > 0 ? (
-                            (discoveredModels['gemini'] || []).map((m) => (
-                              <option key={m.id} value={m.id}>
-                                {m.displayName} ({m.id})
-                              </option>
-                            ))
+                          {(discoveredModels['gemini'] || [])
+                            .filter((m) => {
+                              const id = m.id.toLowerCase();
+                              const name = (m.displayName || '').toLowerCase();
+                              return (
+                                !id.includes('tts') &&
+                                !name.includes('tts') &&
+                                !id.includes('speech') &&
+                                !id.includes('audio') &&
+                                !id.includes('embed') &&
+                                !id.includes('imagen') &&
+                                id !== 'aqa'
+                              );
+                            }).length > 0 ? (
+                            (discoveredModels['gemini'] || [])
+                              .filter((m) => {
+                                const id = m.id.toLowerCase();
+                                const name = (m.displayName || '').toLowerCase();
+                                return (
+                                  !id.includes('tts') &&
+                                  !name.includes('tts') &&
+                                  !id.includes('speech') &&
+                                  !id.includes('audio') &&
+                                  !id.includes('embed') &&
+                                  !id.includes('imagen') &&
+                                  id !== 'aqa'
+                                );
+                              })
+                              .map((m) => (
+                                <option key={m.id} value={m.id}>
+                                  {m.displayName} ({m.id})
+                                </option>
+                              ))
                           ) : (
                             <>
-                              <option value="gemini-2.0-flash">Gemini 2.0 Flash</option>
-                              <option value="gemini-2.5-flash">Gemini 2.5 Flash</option>
-                              <option value="gemini-1.5-flash">Gemini 1.5 Flash</option>
-                              <option value="gemini-1.5-pro">Gemini 1.5 Pro</option>
+                              <option value="gemini-2.0-flash">Gemini 2.0 Flash (gemini-2.0-flash)</option>
+                              <option value="gemini-2.5-flash">Gemini 2.5 Flash (gemini-2.5-flash)</option>
+                              <option value="gemini-1.5-flash">Gemini 1.5 Flash (gemini-1.5-flash)</option>
+                              <option value="gemini-1.5-pro">Gemini 1.5 Pro (gemini-1.5-pro)</option>
                             </>
                           )}
                         </select>

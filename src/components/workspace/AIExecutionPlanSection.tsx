@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import { Deadline, AIProviderId, ApprovedAIExecutionPlan, AIPlanMilestone } from '@/types';
 import { useDeadlineStore } from '@/store/useDeadlineStore';
 import { credentialStorage } from '@/core/security/SessionMemoryCredentialStore';
@@ -18,6 +18,7 @@ import {
   History,
   Key,
   Check,
+  AlertTriangle,
 } from 'lucide-react';
 
 interface AIExecutionPlanSectionProps {
@@ -31,6 +32,8 @@ export const AIExecutionPlanSection: React.FC<AIExecutionPlanSectionProps> = ({ 
     updateApprovedPlan,
     importPlanMilestones,
     regenerateDeadlinePlan,
+    discoverProviderModels,
+    isDiscoveringModels,
   } = useDeadlineStore();
 
   const plan = deadline.approvedPlan;
@@ -71,6 +74,69 @@ export const AIExecutionPlanSection: React.FC<AIExecutionPlanSectionProps> = ({ 
   const existingMilestoneTitles = new Set(
     deadline.milestones.map((m) => m.title.trim().toLowerCase())
   );
+
+  // Helper to check if model represents a non-text model (TTS, audio, embed, imagen)
+  const isModelNonText = (id: string, name?: string) => {
+    const cleanId = (id || '').toLowerCase();
+    const cleanName = (name || '').toLowerCase();
+    return (
+      cleanId.includes('tts') ||
+      cleanName.includes('tts') ||
+      cleanId.includes('speech') ||
+      cleanName.includes('speech') ||
+      cleanId.includes('audio') ||
+      cleanName.includes('audio') ||
+      cleanId.includes('embed') ||
+      cleanId.includes('imagen') ||
+      cleanId === 'aqa' ||
+      cleanId.startsWith('aqa-')
+    );
+  };
+
+  // Filter discovered Gemini models strictly for compatible text generation models
+  const compatibleGeminiModels = useMemo(() => {
+    const list = discoveredModels['gemini'] || [];
+    return list.filter((m) => !isModelNonText(m.id, m.displayName));
+  }, [discoveredModels]);
+
+  const selectedInitialMeta = useMemo(() => {
+    return compatibleGeminiModels.find((m) => m.id === initialModelId);
+  }, [compatibleGeminiModels, initialModelId]);
+
+  const selectedRegenMeta = useMemo(() => {
+    return compatibleGeminiModels.find((m) => m.id === regenModelId);
+  }, [compatibleGeminiModels, regenModelId]);
+
+  const isInitialModelIncompatible = useMemo(() => {
+    if (initialProviderId !== 'gemini') return false;
+    if (isModelNonText(initialModelId)) return true;
+    if (compatibleGeminiModels.length > 0) {
+      return !compatibleGeminiModels.some((m) => m.id === initialModelId);
+    }
+    return false;
+  }, [initialProviderId, initialModelId, compatibleGeminiModels]);
+
+  const isRegenModelIncompatible = useMemo(() => {
+    if (regenProviderId !== 'gemini') return false;
+    if (isModelNonText(regenModelId)) return true;
+    if (compatibleGeminiModels.length > 0) {
+      return !compatibleGeminiModels.some((m) => m.id === regenModelId);
+    }
+    return false;
+  }, [regenProviderId, regenModelId, compatibleGeminiModels]);
+
+  const handleRefreshModels = async (providerId: AIProviderId) => {
+    let key = await credentialStorage.getSecret(`ai_key_${providerId}`);
+    if (!key && initialKeyInput.trim()) {
+      key = initialKeyInput.trim();
+      await credentialStorage.saveSecret(`ai_key_${providerId}`, key);
+    }
+    if (key) {
+      await discoverProviderModels(providerId, key);
+    } else {
+      setShowKeyPrompt(true);
+    }
+  };
 
   const handleStartEdit = () => {
     if (!plan) return;
@@ -279,27 +345,40 @@ export const AIExecutionPlanSection: React.FC<AIExecutionPlanSectionProps> = ({ 
             </div>
 
             <div>
-              <label className="text-[11px] font-medium text-muted-foreground block mb-1">
-                Model
-              </label>
+              <div className="flex items-center justify-between mb-1">
+                <label className="text-[11px] font-medium text-muted-foreground block">
+                  Model
+                </label>
+                {initialProviderId === 'gemini' && (
+                  <button
+                    type="button"
+                    onClick={() => handleRefreshModels('gemini')}
+                    disabled={Boolean(isDiscoveringModels['gemini'])}
+                    className="inline-flex items-center gap-1 text-[10px] text-muted-foreground hover:text-foreground cursor-pointer font-medium"
+                  >
+                    <RefreshCw className={`h-3 w-3 ${isDiscoveringModels['gemini'] ? 'animate-spin' : ''}`} />
+                    <span>Refresh</span>
+                  </button>
+                )}
+              </div>
               {initialProviderId === 'gemini' ? (
                 <select
                   value={initialModelId}
                   onChange={(e) => setInitialModelId(e.target.value)}
                   className="w-full h-8 px-2.5 rounded-md border border-input bg-background text-xs font-mono cursor-pointer"
                 >
-                  {(discoveredModels['gemini'] || []).length > 0 ? (
-                    (discoveredModels['gemini'] || []).map((m) => (
+                  {compatibleGeminiModels.length > 0 ? (
+                    compatibleGeminiModels.map((m) => (
                       <option key={m.id} value={m.id}>
                         {m.displayName} ({m.id})
                       </option>
                     ))
                   ) : (
                     <>
-                      <option value="gemini-2.0-flash">Gemini 2.0 Flash</option>
-                      <option value="gemini-2.5-flash">Gemini 2.5 Flash</option>
-                      <option value="gemini-1.5-flash">Gemini 1.5 Flash</option>
-                      <option value="gemini-1.5-pro">Gemini 1.5 Pro</option>
+                      <option value="gemini-2.0-flash">Gemini 2.0 Flash (gemini-2.0-flash)</option>
+                      <option value="gemini-2.5-flash">Gemini 2.5 Flash (gemini-2.5-flash)</option>
+                      <option value="gemini-1.5-flash">Gemini 1.5 Flash (gemini-1.5-flash)</option>
+                      <option value="gemini-1.5-pro">Gemini 1.5 Pro (gemini-1.5-pro)</option>
                     </>
                   )}
                 </select>
@@ -309,13 +388,60 @@ export const AIExecutionPlanSection: React.FC<AIExecutionPlanSectionProps> = ({ 
                   onChange={(e) => setInitialModelId(e.target.value)}
                   className="w-full h-8 px-2.5 rounded-md border border-input bg-background text-xs font-mono cursor-pointer"
                 >
-                  <option value="claude-3-7-sonnet-latest">Claude 3.7 Sonnet</option>
-                  <option value="claude-3-5-haiku-latest">Claude 3.5 Haiku</option>
-                  <option value="claude-3-opus-latest">Claude 3 Opus</option>
+                  <option value="claude-3-7-sonnet-latest">Claude 3.7 Sonnet (claude-3-7-sonnet-latest)</option>
+                  <option value="claude-3-5-haiku-latest">Claude 3.5 Haiku (claude-3-5-haiku-latest)</option>
+                  <option value="claude-3-opus-latest">Claude 3 Opus (claude-3-opus-latest)</option>
                 </select>
+              )}
+
+              {/* Model capability metadata display */}
+              {initialProviderId === 'gemini' && selectedInitialMeta && (
+                <div className="flex flex-wrap items-center gap-1.5 pt-1 text-[10px] text-muted-foreground">
+                  <span className="font-mono bg-background px-1.5 py-0.5 rounded border border-border">
+                    ID: {selectedInitialMeta.id}
+                  </span>
+                  {selectedInitialMeta.inputTokenLimit && (
+                    <span className="bg-background px-1.5 py-0.5 rounded border border-border">
+                      Context: {selectedInitialMeta.inputTokenLimit >= 1000000 ? `${(selectedInitialMeta.inputTokenLimit / 1000000).toFixed(1)}M` : `${Math.round(selectedInitialMeta.inputTokenLimit / 1024)}K`}
+                    </span>
+                  )}
+                  {selectedInitialMeta.outputTokenLimit && (
+                    <span className="bg-background px-1.5 py-0.5 rounded border border-border">
+                      Output: {Math.round(selectedInitialMeta.outputTokenLimit / 1024)}K
+                    </span>
+                  )}
+                  <span className="bg-primary/10 text-primary font-semibold px-1.5 py-0.5 rounded border border-primary/20">
+                    Text Generation
+                  </span>
+                </div>
               )}
             </div>
           </div>
+
+          {/* Warning for incompatible models */}
+          {isInitialModelIncompatible && (
+            <div className="p-3 rounded-lg border border-amber-500/40 bg-amber-500/10 text-xs text-amber-600 dark:text-amber-400 font-medium space-y-1.5">
+              <div className="flex items-center gap-1.5 font-bold">
+                <AlertTriangle className="h-4 w-4 shrink-0 text-amber-500" />
+                <span>Incompatible Model Selected: "{initialModelId}"</span>
+              </div>
+              <p className="text-[11px] leading-relaxed">
+                This model is not suitable for text execution plans (e.g. Text-to-Speech or audio-only model).
+                Please select a compatible text generation model from the dropdown above.
+              </p>
+              {compatibleGeminiModels.length > 0 && (
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setInitialModelId(compatibleGeminiModels[0].id)}
+                  className="text-xs h-7 cursor-pointer"
+                >
+                  Switch to {compatibleGeminiModels[0].displayName}
+                </Button>
+              )}
+            </div>
+          )}
 
           {showKeyPrompt && (
             <div className="space-y-1.5 pt-2 border-t border-border/60">
@@ -348,6 +474,7 @@ export const AIExecutionPlanSection: React.FC<AIExecutionPlanSectionProps> = ({ 
             size="md"
             onClick={handleGenerateInitialPlan}
             isLoading={isGeneratingInitial}
+            disabled={isGeneratingInitial || isInitialModelIncompatible}
             className="cursor-pointer"
           >
             <Sparkles className="h-4 w-4 mr-1.5" />
@@ -846,27 +973,40 @@ export const AIExecutionPlanSection: React.FC<AIExecutionPlanSectionProps> = ({ 
               </div>
 
               <div>
-                <label className="text-[11px] font-medium text-muted-foreground block mb-1">
-                  Target Model
-                </label>
+                <div className="flex items-center justify-between mb-1">
+                  <label className="text-[11px] font-medium text-muted-foreground block">
+                    Target Model
+                  </label>
+                  {regenProviderId === 'gemini' && (
+                    <button
+                      type="button"
+                      onClick={() => handleRefreshModels('gemini')}
+                      disabled={Boolean(isDiscoveringModels['gemini'])}
+                      className="inline-flex items-center gap-1 text-[10px] text-muted-foreground hover:text-foreground cursor-pointer font-medium"
+                    >
+                      <RefreshCw className={`h-3 w-3 ${isDiscoveringModels['gemini'] ? 'animate-spin' : ''}`} />
+                      <span>Refresh</span>
+                    </button>
+                  )}
+                </div>
                 {regenProviderId === 'gemini' ? (
                   <select
                     value={regenModelId}
                     onChange={(e) => setRegenModelId(e.target.value)}
                     className="w-full h-8 px-2.5 rounded-md border border-input bg-background text-xs font-mono cursor-pointer"
                   >
-                    {(discoveredModels['gemini'] || []).length > 0 ? (
-                      (discoveredModels['gemini'] || []).map((m) => (
+                    {compatibleGeminiModels.length > 0 ? (
+                      compatibleGeminiModels.map((m) => (
                         <option key={m.id} value={m.id}>
                           {m.displayName} ({m.id})
                         </option>
                       ))
                     ) : (
                       <>
-                        <option value="gemini-2.0-flash">Gemini 2.0 Flash</option>
-                        <option value="gemini-2.5-flash">Gemini 2.5 Flash</option>
-                        <option value="gemini-1.5-flash">Gemini 1.5 Flash</option>
-                        <option value="gemini-1.5-pro">Gemini 1.5 Pro</option>
+                        <option value="gemini-2.0-flash">Gemini 2.0 Flash (gemini-2.0-flash)</option>
+                        <option value="gemini-2.5-flash">Gemini 2.5 Flash (gemini-2.5-flash)</option>
+                        <option value="gemini-1.5-flash">Gemini 1.5 Flash (gemini-1.5-flash)</option>
+                        <option value="gemini-1.5-pro">Gemini 1.5 Pro (gemini-1.5-pro)</option>
                       </>
                     )}
                   </select>
@@ -876,11 +1016,52 @@ export const AIExecutionPlanSection: React.FC<AIExecutionPlanSectionProps> = ({ 
                     onChange={(e) => setRegenModelId(e.target.value)}
                     className="w-full h-8 px-2.5 rounded-md border border-input bg-background text-xs font-mono cursor-pointer"
                   >
-                    <option value="claude-3-7-sonnet-latest">Claude 3.7 Sonnet</option>
-                    <option value="claude-3-5-haiku-latest">Claude 3.5 Haiku</option>
+                    <option value="claude-3-7-sonnet-latest">Claude 3.7 Sonnet (claude-3-7-sonnet-latest)</option>
+                    <option value="claude-3-5-haiku-latest">Claude 3.5 Haiku (claude-3-5-haiku-latest)</option>
                   </select>
                 )}
+
+                {/* Model capability metadata display */}
+                {regenProviderId === 'gemini' && selectedRegenMeta && (
+                  <div className="flex flex-wrap items-center gap-1.5 pt-1 text-[10px] text-muted-foreground">
+                    <span className="font-mono bg-background px-1.5 py-0.5 rounded border border-border">
+                      ID: {selectedRegenMeta.id}
+                    </span>
+                    {selectedRegenMeta.inputTokenLimit && (
+                      <span className="bg-background px-1.5 py-0.5 rounded border border-border">
+                        Context: {selectedRegenMeta.inputTokenLimit >= 1000000 ? `${(selectedRegenMeta.inputTokenLimit / 1000000).toFixed(1)}M` : `${Math.round(selectedRegenMeta.inputTokenLimit / 1024)}K`}
+                      </span>
+                    )}
+                    <span className="bg-primary/10 text-primary font-semibold px-1.5 py-0.5 rounded border border-primary/20">
+                      Text Generation
+                    </span>
+                  </div>
+                )}
               </div>
+
+              {/* Warning for incompatible models in regenerate dialog */}
+              {isRegenModelIncompatible && (
+                <div className="p-3 rounded-lg border border-amber-500/40 bg-amber-500/10 text-xs text-amber-600 dark:text-amber-400 font-medium space-y-1.5">
+                  <div className="flex items-center gap-1.5 font-bold">
+                    <AlertTriangle className="h-4 w-4 shrink-0 text-amber-500" />
+                    <span>Incompatible Model Selected: "{regenModelId}"</span>
+                  </div>
+                  <p className="text-[11px] leading-relaxed">
+                    This model is not suitable for text execution plans. Please select a compatible text generation model.
+                  </p>
+                  {compatibleGeminiModels.length > 0 && (
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      onClick={() => setRegenModelId(compatibleGeminiModels[0].id)}
+                      className="text-xs h-7 cursor-pointer"
+                    >
+                      Switch to {compatibleGeminiModels[0].displayName}
+                    </Button>
+                  )}
+                </div>
+              )}
             </div>
 
             {regenError && (
@@ -905,6 +1086,7 @@ export const AIExecutionPlanSection: React.FC<AIExecutionPlanSectionProps> = ({ 
                 size="sm"
                 onClick={handleRegenerate}
                 isLoading={isRegenerating}
+                disabled={isRegenerating || isRegenModelIncompatible}
                 className="cursor-pointer"
               >
                 Confirm &amp; Regenerate
