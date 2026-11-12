@@ -73,7 +73,7 @@ interface DeadlineStoreState {
   setProviderApiKey: (providerId: AIProviderId, apiKey: string) => Promise<void>;
   getMaskedApiKey: (providerId: AIProviderId) => Promise<string>;
   hasProviderApiKey: (providerId: AIProviderId) => Promise<boolean>;
-  generateExecutionPlan: (deadlineId: string, customInstructions?: string) => Promise<AIExecutionPlan>;
+  generateExecutionPlan: (deadlineId: string, customInstructions?: string, preferredProviderId?: AIProviderId) => Promise<AIExecutionPlan>;
 
   // Actions - Data Operations
   loadInitialData: () => Promise<void>;
@@ -777,7 +777,7 @@ export const useDeadlineStore = create<DeadlineStoreState>((set, get) => ({
     return await credentialStorage.hasSecret(`ai_key_${providerId}`);
   },
 
-  generateExecutionPlan: async (deadlineId, customInstructions) => {
+  generateExecutionPlan: async (deadlineId, customInstructions, preferredProviderId) => {
     const target = get().deadlines.find((d) => d.id === deadlineId);
     if (!target) {
       throw new Error(`Deadline "${deadlineId}" not found.`);
@@ -785,15 +785,19 @@ export const useDeadlineStore = create<DeadlineStoreState>((set, get) => ({
 
     set({ isGeneratingPlan: true });
     try {
-      // Find configured provider or default to Anthropic
       const providers = get().configuredProviders;
-      const configuredId =
-        (Object.keys(providers).find((k) => providers[k]?.isEnabled) as AIProviderId) || 'anthropic';
-      const config = providers[configuredId];
+      let effectiveProviderId: AIProviderId = preferredProviderId || 'gemini';
+      if (!preferredProviderId) {
+        const enabledKeys = Object.keys(providers).filter((k) => providers[k]?.isEnabled) as AIProviderId[];
+        if (enabledKeys.length > 0) {
+          effectiveProviderId = enabledKeys.includes('gemini') ? 'gemini' : enabledKeys[0];
+        }
+      }
+      const config = providers[effectiveProviderId];
 
       const plan = await aiExecutionService.generateExecutionPlan(
         target,
-        configuredId,
+        effectiveProviderId,
         undefined,
         config?.baseUrl,
         config?.selectedModelId,
@@ -814,7 +818,7 @@ export const useDeadlineStore = create<DeadlineStoreState>((set, get) => ({
         deadlineId,
         deadlineTitle: target.title,
         type: 'updated',
-        title: `Generated AI execution plan for "${target.title}" using ${configuredId}`,
+        title: `Generated AI execution plan for "${target.title}" using ${effectiveProviderId}`,
         timestamp: new Date().toISOString(),
       });
 

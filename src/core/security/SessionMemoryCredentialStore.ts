@@ -46,3 +46,4 @@ export class SessionMemoryCredentialStore implements ICredentialStorage {
 
 // Export singleton instance for the application runtime
 export const credentialStorage = new SessionMemoryCredentialStore();
+

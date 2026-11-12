@@ -45,3 +45,4 @@ export class DefaultAIProviderRegistry implements IAIProviderRegistry {
 }
 
 export const aiProviderRegistry = new DefaultAIProviderRegistry();
+

@@ -115,6 +115,10 @@ export interface IAIProvider {
     baseUrl?: string,
     modelId?: string
   ): Promise<AIExecutionPlan>;
+  fetchAvailableModels?(
+    apiKey: string,
+    baseUrl?: string
+  ): Promise<AIModelOption[]>;
 }
 
 /**
@@ -155,3 +159,4 @@ export interface IAIExecutionService {
     customInstructions?: string
   ): Promise<AIExecutionPlan>;
 }
+

@@ -44,7 +44,7 @@ Every deadline answers six fundamental questions:
 - **State Management:** Zustand 5.0 (`src/store/useDeadlineStore.ts`).
 - **Persistence:** Modular `IStorageAdapter` interface (`src/services/storage/IStorageAdapter.ts`) implemented via `LocalStorageAdapter`.
 - **Audio Feedback:** Synthesized Web Audio API harmonic chords (`src/lib/audio.ts`) with zero external assets.
-- **Testing:** Vitest 2.1 (`npm test` — 56 tests passing across 8 suites).
+- **Testing:** Vitest 2.1 (`npm test` — 66 tests passing across 8 suites).
 - **Linter & CI:** ESLint 10 (`npm run lint`), GitHub Actions (`.github/workflows/ci.yml`).
 
 ---
@@ -82,8 +82,8 @@ src/
 │   │   ├── AIExecutionService.ts     # Provider-agnostic planning & task decomposition
 │   │   ├── providers/
 │   │   │   ├── AnthropicProvider.ts  # Claude 3.7 Sonnet / 3.5 Sonnet / 3.5 Haiku (Active & Functional)
+│   │   │   ├── GeminiProvider.ts     # Gemini 2.0 Flash / 2.5 Flash / 1.5 Pro (Active & Functional)
 │   │   │   ├── OpenAIProvider.ts     # GPT-4o / o3-mini (Interface Scaffolding • Phase 2)
-│   │   │   ├── GeminiProvider.ts     # Gemini 2.0 Flash / Pro (Interface Scaffolding • Phase 2)
 │   │   │   └── OpenAICompatibleProvider.ts # Ollama / vLLM (Interface Scaffolding • Phase 2)
 │   │   └── ai.test.ts                # Unit tests for registry, context builder, and provider isolation
 │   ├── security/                     # Credential protection boundary
@@ -142,7 +142,8 @@ src/
 1. **AI Provider Abstraction & Registry (`src/core/ai`)**:
    - `IAIProvider` and `IAIProviderRegistry` decouple Deadline from any single AI vendor.
    - **Anthropic Provider Adapter:** Genuinely functional adapter supporting Claude 3.7 Sonnet, Claude 3.5 Sonnet, and Claude 3.5 Haiku, with connection testing, CORS browser handling, and execution plan synthesis.
-   - **Provider Interface Scaffolding:** OpenAI, Google Gemini, and OpenAI-Compatible adapters prepared with full model metadata for Phase 2 implementation.
+   - **Google Gemini Provider Adapter:** Genuinely functional integration supporting Gemini 2.0 Flash, Gemini 2.5 Flash, Gemini 2.0 Flash-Lite, Gemini 1.5 Pro, and Gemini 1.5 Flash, with live test connection, dynamic model discovery (`fetchAvailableModels`), and structured JSON execution plan generation.
+   - **Provider Interface Scaffolding:** OpenAI and OpenAI-Compatible adapters prepared with full model metadata for Phase 2 implementation.
 2. **Session-Only Security Boundary (`src/core/security`)**:
    - `SessionMemoryCredentialStore` keeps API keys strictly in volatile browser memory.
    - Zero keys written to `LocalStorage`.

@@ -1,7 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { useDeadlineStore } from '@/store/useDeadlineStore';
 import { aiProviderRegistry } from '@/core/ai/AIProviderRegistry';
-import { AIProviderId, AIProviderMetadata, AIConnectionTestResult } from '@/core/ai/types';
+import { AIProviderId, AIProviderMetadata, AIConnectionTestResult, AIModelOption, IAIProvider } from '@/core/ai/types';
+import { credentialStorage } from '@/core/security/SessionMemoryCredentialStore';
 import { Button } from '@/components/ui/Button';
 import { Badge } from '@/components/ui/Badge';
 import {
@@ -38,6 +39,8 @@ export const AIIntegrationsSettings: React.FC = () => {
   const [testResults, setTestResults] = useState<Record<string, AIConnectionTestResult | null>>({});
   const [testingId, setTestingId] = useState<string | null>(null);
   const [saveSuccess, setSaveSuccess] = useState<Record<string, boolean>>({});
+  const [customModels, setCustomModels] = useState<Record<string, AIModelOption[]>>({});
+  const [isRefreshingModels, setIsRefreshingModels] = useState<Record<string, boolean>>({});
 
   // Load existing configs into local form states
   useEffect(() => {
@@ -77,6 +80,32 @@ export const AIIntegrationsSettings: React.FC = () => {
     const result = await testProviderConnection(providerId, key, baseUrl, modelId);
     setTestResults((prev) => ({ ...prev, [providerId]: result }));
     setTestingId(null);
+  };
+
+  const handleRefreshModels = async (provider: IAIProvider) => {
+    if (!provider.fetchAvailableModels) return;
+    let key = apiKeys[provider.id]?.trim();
+    if (!key) {
+      const stored = await credentialStorage.getSecret(`ai_key_${provider.id}`);
+      if (stored) key = stored;
+    }
+
+    if (!key) {
+      alert('Please enter an API key first to fetch live models from Google.');
+      return;
+    }
+
+    setIsRefreshingModels((prev) => ({ ...prev, [provider.id]: true }));
+    try {
+      const fetched = await provider.fetchAvailableModels(key, baseUrls[provider.id]);
+      if (fetched && fetched.length > 0) {
+        setCustomModels((prev) => ({ ...prev, [provider.id]: fetched }));
+      }
+    } catch (e) {
+      console.warn('Failed to fetch live models', e);
+    } finally {
+      setIsRefreshingModels((prev) => ({ ...prev, [provider.id]: false }));
+    }
   };
 
   const handleSave = async (metadata: AIProviderMetadata) => {
@@ -156,6 +185,8 @@ export const AIIntegrationsSettings: React.FC = () => {
           const testRes = testResults[metadata.id];
           const isTesting = testingId === metadata.id;
           const isAnthropic = metadata.id === 'anthropic';
+          const isGemini = metadata.id === 'gemini';
+          const availableModels = customModels[metadata.id] || metadata.availableModels;
 
           return (
             <div
@@ -170,7 +201,11 @@ export const AIIntegrationsSettings: React.FC = () => {
               <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-border">
                 <div className="flex items-center gap-3">
                   <div className={`p-2 rounded-lg shrink-0 ${
-                    isAnthropic ? 'bg-orange-500/10 text-orange-600 dark:text-orange-400' : 'bg-secondary text-muted-foreground'
+                    isAnthropic
+                      ? 'bg-orange-500/10 text-orange-600 dark:text-orange-400'
+                      : isGemini
+                      ? 'bg-blue-500/10 text-blue-600 dark:text-blue-400'
+                      : 'bg-secondary text-muted-foreground'
                   }`}>
                     <Cpu className="h-5 w-5" />
                   </div>
@@ -233,7 +268,7 @@ export const AIIntegrationsSettings: React.FC = () => {
                     <label className="font-medium text-foreground flex items-center gap-1">
                       <Key className="h-3.5 w-3.5 text-muted-foreground" />
                       <span>API Key</span>
-                      {isAnthropic && <span className="text-red-500">*</span>}
+                      {(isAnthropic || isGemini) && <span className="text-red-500">*</span>}
                     </label>
                     {hasKey && (
                       <span className="text-[10px] text-emerald-500 font-mono flex items-center gap-1">
@@ -248,8 +283,10 @@ export const AIIntegrationsSettings: React.FC = () => {
                       placeholder={
                         hasKey
                           ? `Active: ${maskedKeys[metadata.id]}`
-                          : metadata.id === 'anthropic'
+                          : isAnthropic
                           ? 'sk-ant-api03-...'
+                          : isGemini
+                          ? 'AIzaSy...'
                           : 'Enter API Key...'
                       }
                       value={apiKeys[metadata.id] || ''}
@@ -276,9 +313,24 @@ export const AIIntegrationsSettings: React.FC = () => {
 
                 {/* Model Selection */}
                 <div className="space-y-1.5">
-                  <label className="block text-xs font-medium text-foreground">
-                    Model Selection
-                  </label>
+                  <div className="flex items-center justify-between text-xs">
+                    <label className="font-medium text-foreground">
+                      Model Selection
+                    </label>
+                    {provider.fetchAvailableModels && (hasKey || apiKeys[metadata.id]) && (
+                      <button
+                        type="button"
+                        onClick={() => handleRefreshModels(provider)}
+                        disabled={isRefreshingModels[metadata.id]}
+                        className="text-[11px] text-primary hover:underline flex items-center gap-1 font-mono"
+                        title="Query Google Gemini API for live available models"
+                      >
+                        <RefreshCw className={`h-3 w-3 ${isRefreshingModels[metadata.id] ? 'animate-spin' : ''}`} />
+                        <span>Live Models</span>
+                      </button>
+                    )}
+                  </div>
+
                   <select
                     value={selectedModels[metadata.id] || ''}
                     onChange={(e) =>
@@ -289,7 +341,7 @@ export const AIIntegrationsSettings: React.FC = () => {
                     }
                     className="h-9 w-full rounded-md border border-input bg-background/50 px-3 text-xs text-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
                   >
-                    {metadata.availableModels.map((m) => (
+                    {availableModels.map((m) => (
                       <option key={m.id} value={m.id}>
                         {m.name} {m.isDefault ? '(Default)' : ''}
                       </option>

@@ -63,3 +63,4 @@ export class OpenAIProvider implements IAIProvider {
     throw new Error('OpenAI provider execution adapter is scheduled for Phase 2. Please use Anthropic for active AI execution planning.');
   }
 }
+

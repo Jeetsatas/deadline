@@ -50,3 +50,4 @@ export class OpenAICompatibleProvider implements IAIProvider {
     throw new Error('Compatible provider execution is scheduled for Phase 2. Please use Anthropic for active AI execution planning.');
   }
 }
+

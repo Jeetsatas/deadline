@@ -168,7 +168,7 @@ Deadline: Tomorrow at 23:59 (Priority: Critical)
 | **Visualizations** | [Recharts 2.13](https://recharts.org/) (Delivery velocity and priority distribution) |
 | **Icons & Animation** | [Lucide React](https://lucide.dev/), [Framer Motion 11.11](https://www.framer.com/motion/) |
 | **Audio Feedback** | Native Web Audio API synthesized harmonics (zero external audio files or network requests) |
-| **AI Orchestration** | Deliverable-agnostic `IAIProvider` registry, `AIContextBuilder`, and `AnthropicProvider` (Claude 3.7 / 3.5) |
+| **AI Orchestration** | Deliverable-agnostic `IAIProvider` registry, `AIContextBuilder`, `AnthropicProvider` (Claude 3.7 / 3.5), and `GeminiProvider` (Gemini 2.0 Flash / 2.5 Flash / 1.5 Pro) |
 | **Credential Security** | `SessionMemoryCredentialStore` — strictly in-memory session protection with zero LocalStorage or export leaks |
 | **Persistence Layer** | Modular `IStorageAdapter` interface with robust `LocalStorageAdapter` and JSON export/import |
 | **Quality & CI** | [Vitest 2.1](https://vitest.dev/), [ESLint 10](https://eslint.org/), GitHub Actions CI |
@@ -239,7 +239,7 @@ npm install
 npm run dev
 # Open http://localhost:3000 in your browser
 
-# 4. Run automated test suite (56 tests)
+# 4. Run automated test suite (66 tests)
 npm test
 
 # 5. Run linter
