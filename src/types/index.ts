@@ -157,3 +157,6 @@ export interface DashboardStats {
 // Re-export AI Integration domain types
 export * from '@/core/ai/types';
 
+// Re-export Universal IDE Integration domain types
+export * from '@/core/ide/types';
+

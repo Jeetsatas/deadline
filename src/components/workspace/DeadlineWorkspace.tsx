@@ -8,6 +8,7 @@ import { ProgressBar } from '@/components/ui/ProgressBar';
 import { executionEngine } from '@/core/execution';
 import { SubmitDeliverableModal } from '@/components/deliverables/SubmitDeliverableModal';
 import { AIExecutionPlanSection } from './AIExecutionPlanSection';
+import { IDEExecutionSection } from './IDEExecutionSection';
 import { formatDate, formatDateTime, generateDeadlineMarkdownReport } from '@/lib/utils';
 import {
   ArrowLeft,
@@ -37,6 +38,7 @@ import {
   ChevronDown,
   Cpu,
   Compass,
+  Code2,
 } from 'lucide-react';
 
 interface DeadlineWorkspaceProps {
@@ -57,6 +59,7 @@ export const DeadlineWorkspace: React.FC<DeadlineWorkspaceProps> = ({ deadline, 
     reopenDeadline,
     openCreateModal,
     deleteDeadline,
+    activeExecutionSessions,
   } = useDeadlineStore();
 
   const [notes, setNotes] = useState(deadline.notes || '');
@@ -70,7 +73,9 @@ export const DeadlineWorkspace: React.FC<DeadlineWorkspaceProps> = ({ deadline, 
   const [showAddLink, setShowAddLink] = useState(false);
   const [linkTitle, setLinkTitle] = useState('');
   const [linkUrl, setLinkUrl] = useState('');
-  const [workspaceTab, setWorkspaceTab] = useState<'execution' | 'ai_plan'>('execution');
+  const [workspaceTab, setWorkspaceTab] = useState<'execution' | 'ai_plan' | 'ide_execution'>('execution');
+
+  const activeSession = activeExecutionSessions[deadline.id];
 
   // Execution engine analysis
   const executionPlan = executionEngine.analyzeDeadline(deadline);
@@ -275,10 +280,40 @@ export const DeadlineWorkspace: React.FC<DeadlineWorkspaceProps> = ({ deadline, 
             </span>
           )}
         </button>
+
+        <button
+          type="button"
+          onClick={() => setWorkspaceTab('ide_execution')}
+          className={`flex items-center gap-2 px-3.5 py-2 rounded-lg text-xs font-semibold transition-all cursor-pointer ${
+            workspaceTab === 'ide_execution'
+              ? 'bg-primary text-white shadow-sm'
+              : 'bg-secondary/60 text-muted-foreground hover:text-foreground hover:bg-secondary'
+          }`}
+        >
+          <Code2 className="h-4 w-4" />
+          <span>Development Environment</span>
+          {activeSession && activeSession.status === 'running' ? (
+            <span className="text-[10px] font-mono px-1.5 py-0.2 rounded-full bg-emerald-500/20 text-emerald-600 dark:text-emerald-400 font-bold ml-1 animate-pulse">
+              Running
+            </span>
+          ) : (
+            <span className="text-[10px] font-mono px-1.5 py-0.2 rounded-full bg-background/20 font-bold ml-1">
+              IDE
+            </span>
+          )}
+        </button>
       </div>
 
       {workspaceTab === 'ai_plan' ? (
-        <AIExecutionPlanSection deadline={deadline} />
+        <AIExecutionPlanSection
+          deadline={deadline}
+          onOpenIDE={() => setWorkspaceTab('ide_execution')}
+        />
+      ) : workspaceTab === 'ide_execution' ? (
+        <IDEExecutionSection
+          deadline={deadline}
+          onOpenSubmitModal={() => setIsSubmitModalOpen(true)}
+        />
       ) : (
         <>
       {/* Active AI Plan Compact Callout if available */}
@@ -295,15 +330,27 @@ export const DeadlineWorkspace: React.FC<DeadlineWorkspaceProps> = ({ deadline, 
               </p>
             </div>
           </div>
-          <Button
-            type="button"
-            variant="outline"
-            size="sm"
-            onClick={() => setWorkspaceTab('ai_plan')}
-            className="shrink-0 text-xs cursor-pointer"
-          >
-            View Full Plan
-          </Button>
+          <div className="flex items-center gap-2 shrink-0">
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={() => setWorkspaceTab('ai_plan')}
+              className="text-xs cursor-pointer"
+            >
+              View Plan
+            </Button>
+            <Button
+              type="button"
+              variant="primary"
+              size="sm"
+              onClick={() => setWorkspaceTab('ide_execution')}
+              className="text-xs cursor-pointer shadow-sm font-semibold"
+            >
+              <Code2 className="h-3.5 w-3.5 mr-1" />
+              Open in IDE
+            </Button>
+          </div>
         </div>
       )}
 

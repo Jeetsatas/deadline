@@ -19,13 +19,18 @@ import {
   Key,
   Check,
   AlertTriangle,
+  Code2,
 } from 'lucide-react';
 
 interface AIExecutionPlanSectionProps {
   deadline: Deadline;
+  onOpenIDE?: () => void;
 }
 
-export const AIExecutionPlanSection: React.FC<AIExecutionPlanSectionProps> = ({ deadline }) => {
+export const AIExecutionPlanSection: React.FC<AIExecutionPlanSectionProps> = ({
+  deadline,
+  onOpenIDE,
+}) => {
   const {
     discoveredModels,
     saveApprovedPlan,
@@ -517,6 +522,19 @@ export const AIExecutionPlanSection: React.FC<AIExecutionPlanSectionProps> = ({ 
           </div>
 
           <div className="flex flex-wrap items-center gap-2">
+            {onOpenIDE && (
+              <Button
+                type="button"
+                variant="primary"
+                size="sm"
+                onClick={onOpenIDE}
+                className="text-xs cursor-pointer shadow-sm font-semibold"
+              >
+                <Code2 className="h-3.5 w-3.5 mr-1" />
+                Execute in IDE / Agent
+              </Button>
+            )}
+
             <Button
               type="button"
               variant="outline"

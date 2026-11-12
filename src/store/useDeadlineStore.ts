@@ -16,6 +16,11 @@ import {
   ModelDiscoveryResult,
   ModelDiscoveryStatus,
   ApprovedAIExecutionPlan,
+  IDEProviderId,
+  IDEDetectionResult,
+  IDECapabilities,
+  ExecutionSession,
+  WorkspaceChangesResult,
 } from '@/types';
 import { storageService } from '@/services/storage';
 import { executionEngine } from '@/core/execution';
@@ -25,6 +30,10 @@ import { credentialStorage } from '@/core/security/SessionMemoryCredentialStore'
 import { maskApiKey } from '@/core/security/ICredentialStorage';
 import { isDueToday, isDueTomorrow, createIsoFromLocal } from '@/lib/utils';
 import { playMilestoneChime, playDeliverableChime } from '@/lib/audio';
+import { ideDiscoveryService } from '@/core/ide/IDEDiscoveryService';
+import { ideExecutionService } from '@/core/ide/IDEExecutionService';
+import { localBridgeClient } from '@/core/ide/bridge/LocalBridgeClient';
+import { ideProviderRegistry } from '@/core/ide/IDEProviderRegistry';
 
 export type NavigationTab =
   | 'overview'
@@ -122,6 +131,33 @@ interface DeadlineStoreState {
   resetToSampleData: () => Promise<void>;
   exportData: () => Promise<string>;
   importData: (json: string) => Promise<boolean>;
+
+  // Phase 3 Universal IDE Integration State
+  bridgeStatus: 'connected' | 'disconnected' | 'connecting' | 'unauthorized';
+  bridgePort: number;
+  pairingToken: string | null;
+  detectedIDEs: Record<IDEProviderId, IDEDetectionResult>;
+  ideCapabilities: Record<IDEProviderId, IDECapabilities>;
+  isDetectingIDEs: boolean;
+  selectedIDEProviderId: IDEProviderId;
+  selectedProjectPath: string;
+  activeExecutionSessions: Record<string, ExecutionSession>;
+  isStartingIDESession: boolean;
+  ideSessionError: string | null;
+  workspaceChanges: Record<string, WorkspaceChangesResult>;
+  isInspectingWorkspaceChanges: boolean;
+
+  // Phase 3 Universal IDE Integration Actions
+  checkBridgeConnection: (token?: string) => Promise<boolean>;
+  pairBridge: (token: string, port?: number) => Promise<boolean>;
+  disconnectBridge: () => void;
+  detectInstalledIDEs: () => Promise<Record<IDEProviderId, IDEDetectionResult>>;
+  setSelectedIDEProvider: (providerId: IDEProviderId) => void;
+  setSelectedProjectPath: (path: string) => void;
+  startIDESession: (deadlineId: string, userInstructions?: string) => Promise<ExecutionSession>;
+  refreshIDESessionStatus: (deadlineId: string) => Promise<ExecutionSession | null>;
+  stopIDESession: (deadlineId: string) => Promise<boolean>;
+  inspectWorkspaceChanges: (deadlineId: string) => Promise<WorkspaceChangesResult>;
 }
 
 const defaultFilter: DeadlineFilter = {
@@ -153,6 +189,24 @@ export const useDeadlineStore = create<DeadlineStoreState>((set, get) => ({
   activeExecutionPlans: {},
   isTestingProvider: false,
   isGeneratingPlan: false,
+
+  // Phase 3 Universal IDE Integration Initial State
+  bridgeStatus: 'disconnected',
+  bridgePort: 4488,
+  pairingToken:
+    typeof window !== 'undefined'
+      ? localStorage.getItem('deadline_bridge_token') || '00e901de26fe44ca7874cedcf4a9433a6b805b06f593c03fdcc26b54ec43bb77'
+      : null,
+  detectedIDEs: {},
+  ideCapabilities: {},
+  isDetectingIDEs: false,
+  selectedIDEProviderId: 'claude_code',
+  selectedProjectPath: '/Users/apple/Desktop/Project- Deadline ',
+  activeExecutionSessions: {},
+  isStartingIDESession: false,
+  ideSessionError: null,
+  workspaceChanges: {},
+  isInspectingWorkspaceChanges: false,
 
   filter: defaultFilter,
 
@@ -259,14 +313,32 @@ export const useDeadlineStore = create<DeadlineStoreState>((set, get) => ({
         // Ignore JSON error
       }
 
+      let parsedSessions: Record<string, ExecutionSession> = {};
+      try {
+        const rawSessions = localStorage.getItem('deadline_ide_sessions_v1');
+        if (rawSessions) {
+          parsedSessions = JSON.parse(rawSessions);
+        }
+      } catch {
+        // Ignore JSON error
+      }
+
       set({
         deadlines,
         activities,
         user,
         configuredProviders: parsedProviders,
         discoveredModels: parsedDiscoveredModels,
+        activeExecutionSessions: parsedSessions,
         isLoading: false,
       });
+
+      // Silently check and connect to Deadline Local Bridge if available
+      try {
+        get().checkBridgeConnection();
+      } catch {
+        // Ignore bridge startup error
+      }
     } catch (e) {
       console.error('Error loading initial data', e);
       set({ error: (e as Error).message, isLoading: false });
@@ -1161,5 +1233,261 @@ export const useDeadlineStore = create<DeadlineStoreState>((set, get) => ({
     ]);
 
     set({ deadlines: updatedDeadlines, activities: updatedActivities });
+  },
+
+  // ==========================================
+  // PHASE 3 UNIVERSAL IDE INTEGRATION ACTIONS
+  // ==========================================
+
+  checkBridgeConnection: async (tokenOverride?: string) => {
+    const port = get().bridgePort;
+    const token =
+      tokenOverride ||
+      get().pairingToken ||
+      (typeof window !== 'undefined'
+        ? localStorage.getItem('deadline_bridge_token') ||
+          '00e901de26fe44ca7874cedcf4a9433a6b805b06f593c03fdcc26b54ec43bb77'
+        : '00e901de26fe44ca7874cedcf4a9433a6b805b06f593c03fdcc26b54ec43bb77');
+
+    localBridgeClient.setPort(port);
+    localBridgeClient.setPairingToken(token);
+
+    set({ bridgeStatus: 'connecting' });
+    const isReachable = await localBridgeClient.isBridgeReachable();
+    if (!isReachable) {
+      set({ bridgeStatus: 'disconnected' });
+      return false;
+    }
+
+    // Attempt pairing
+    const isPaired = await localBridgeClient.pair(token);
+    if (!isPaired) {
+      set({ bridgeStatus: 'unauthorized' });
+      return false;
+    }
+
+    if (typeof window !== 'undefined') {
+      try {
+        localStorage.setItem('deadline_bridge_token', token);
+      } catch {
+        // Ignore
+      }
+    }
+
+    set({ bridgeStatus: 'connected', pairingToken: token });
+
+    // Automatically trigger IDE detection across all 6 providers
+    await get().detectInstalledIDEs();
+    return true;
+  },
+
+  pairBridge: async (token: string, port = 4488) => {
+    set({ bridgePort: port, pairingToken: token.trim() });
+    return await get().checkBridgeConnection(token.trim());
+  },
+
+  disconnectBridge: () => {
+    localBridgeClient.setPairingToken(null);
+    if (typeof window !== 'undefined') {
+      try {
+        localStorage.removeItem('deadline_bridge_token');
+      } catch {
+        // Ignore
+      }
+    }
+    set({
+      bridgeStatus: 'disconnected',
+      pairingToken: null,
+      detectedIDEs: {},
+      ideCapabilities: {},
+    });
+  },
+
+  detectInstalledIDEs: async () => {
+    set({ isDetectingIDEs: true });
+    try {
+      const allInfo = await ideDiscoveryService.discoverAll();
+      const detectedMap: Record<IDEProviderId, IDEDetectionResult> = {};
+      const capMap: Record<IDEProviderId, IDECapabilities> = {};
+
+      for (const [id, info] of Object.entries(allInfo)) {
+        detectedMap[id] = info.detection;
+        capMap[id] = info.capabilities;
+      }
+
+      // If current selected provider is not installed, select first detected installed provider
+      let currentSelection = get().selectedIDEProviderId;
+      const installedProviders = Object.keys(detectedMap).filter(
+        (id) => detectedMap[id]?.isInstalled
+      );
+
+      if (!detectedMap[currentSelection]?.isInstalled && installedProviders.length > 0) {
+        currentSelection = installedProviders[0];
+      }
+
+      set({
+        detectedIDEs: detectedMap,
+        ideCapabilities: capMap,
+        selectedIDEProviderId: currentSelection,
+        isDetectingIDEs: false,
+      });
+
+      return detectedMap;
+    } catch (e) {
+      console.error('Failed to detect IDEs', e);
+      set({ isDetectingIDEs: false });
+      return {};
+    }
+  },
+
+  setSelectedIDEProvider: (providerId: IDEProviderId) => {
+    set({ selectedIDEProviderId: providerId });
+  },
+
+  setSelectedProjectPath: (path: string) => {
+    set({ selectedProjectPath: path });
+  },
+
+  startIDESession: async (deadlineId: string, userInstructions?: string) => {
+    const deadline = get().deadlines.find((d) => d.id === deadlineId);
+    if (!deadline) {
+      throw new Error(`Deadline "${deadlineId}" not found.`);
+    }
+
+    const providerId = get().selectedIDEProviderId;
+    const projectPath = get().selectedProjectPath;
+
+    set({ isStartingIDESession: true, ideSessionError: null });
+
+    try {
+      const { session, launchResult } = await ideExecutionService.startExecution(
+        deadline,
+        providerId,
+        projectPath,
+        userInstructions
+      );
+
+      const updatedSessions = {
+        ...get().activeExecutionSessions,
+        [deadlineId]: session,
+      };
+
+      if (typeof window !== 'undefined') {
+        try {
+          localStorage.setItem('deadline_ide_sessions_v1', JSON.stringify(updatedSessions));
+        } catch {
+          // Ignore
+        }
+      }
+
+      const providerMeta = ideProviderRegistry.getProvider(providerId)?.metadata;
+      await storageService.addActivity({
+        id: `act_${Date.now()}`,
+        deadlineId,
+        deadlineTitle: deadline.title,
+        type: 'status_changed',
+        title: `Launched ${providerMeta?.displayName || providerId} Session`,
+        description: launchResult.message,
+        timestamp: new Date().toISOString(),
+      });
+
+      const [updatedDeadlines, updatedActivities] = await Promise.all([
+        storageService.getDeadlines(),
+        storageService.getActivities(),
+      ]);
+
+      set({
+        activeExecutionSessions: updatedSessions,
+        isStartingIDESession: false,
+        deadlines: updatedDeadlines,
+        activities: updatedActivities,
+      });
+
+      return session;
+    } catch (err) {
+      const msg = (err as Error).message || 'Failed to start IDE session.';
+      set({ isStartingIDESession: false, ideSessionError: msg });
+      throw err;
+    }
+  },
+
+  refreshIDESessionStatus: async (deadlineId: string) => {
+    const session = get().activeExecutionSessions[deadlineId];
+    if (!session) return null;
+
+    try {
+      const refreshed = await ideExecutionService.refreshSessionStatus(session);
+      const updatedSessions = {
+        ...get().activeExecutionSessions,
+        [deadlineId]: refreshed,
+      };
+
+      if (typeof window !== 'undefined') {
+        try {
+          localStorage.setItem('deadline_ide_sessions_v1', JSON.stringify(updatedSessions));
+        } catch {
+          // Ignore
+        }
+      }
+
+      set({ activeExecutionSessions: updatedSessions });
+      return refreshed;
+    } catch {
+      return session;
+    }
+  },
+
+  stopIDESession: async (deadlineId: string) => {
+    const session = get().activeExecutionSessions[deadlineId];
+    if (!session) return false;
+
+    try {
+      const stopped = await ideExecutionService.stopSession(session);
+      const stoppedSession: ExecutionSession = {
+        ...session,
+        status: 'cancelled',
+        endedAt: new Date().toISOString(),
+      };
+
+      const updatedSessions = {
+        ...get().activeExecutionSessions,
+        [deadlineId]: stoppedSession,
+      };
+
+      if (typeof window !== 'undefined') {
+        try {
+          localStorage.setItem('deadline_ide_sessions_v1', JSON.stringify(updatedSessions));
+        } catch {
+          // Ignore
+        }
+      }
+
+      set({ activeExecutionSessions: updatedSessions });
+      return stopped;
+    } catch (e) {
+      console.error('Failed to stop session', e);
+      return false;
+    }
+  },
+
+  inspectWorkspaceChanges: async (deadlineId: string) => {
+    const session = get().activeExecutionSessions[deadlineId];
+    const projectPath = session?.projectPath || get().selectedProjectPath;
+
+    set({ isInspectingWorkspaceChanges: true });
+    try {
+      const changes = await ideExecutionService.verifyWorkspaceChanges(projectPath);
+      set((state) => ({
+        workspaceChanges: {
+          ...state.workspaceChanges,
+          [deadlineId]: changes,
+        },
+        isInspectingWorkspaceChanges: false,
+      }));
+      return changes;
+    } catch (err) {
+      set({ isInspectingWorkspaceChanges: false });
+      throw err;
+    }
   },
 }));
