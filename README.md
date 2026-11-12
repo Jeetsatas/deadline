@@ -168,6 +168,8 @@ Deadline: Tomorrow at 23:59 (Priority: Critical)
 | **Visualizations** | [Recharts 2.13](https://recharts.org/) (Delivery velocity and priority distribution) |
 | **Icons & Animation** | [Lucide React](https://lucide.dev/), [Framer Motion 11.11](https://www.framer.com/motion/) |
 | **Audio Feedback** | Native Web Audio API synthesized harmonics (zero external audio files or network requests) |
+| **AI Orchestration** | Deliverable-agnostic `IAIProvider` registry, `AIContextBuilder`, and `AnthropicProvider` (Claude 3.7 / 3.5) |
+| **Credential Security** | `SessionMemoryCredentialStore` — strictly in-memory session protection with zero LocalStorage or export leaks |
 | **Persistence Layer** | Modular `IStorageAdapter` interface with robust `LocalStorageAdapter` and JSON export/import |
 | **Quality & CI** | [Vitest 2.1](https://vitest.dev/), [ESLint 10](https://eslint.org/), GitHub Actions CI |
 
@@ -178,14 +180,16 @@ Deadline: Tomorrow at 23:59 (Priority: Critical)
 ```
 src/
 ├── core/
+│   ├── ai/                 # Deliverable-agnostic AI provider registry, context builder, and Anthropic adapter
+│   ├── security/           # Credential boundary (ICredentialStorage, SessionMemoryCredentialStore, masking)
 │   ├── execution/          # Execution engine (bottlenecks, MVP triage, velocity scoring)
 │   └── prototype/          # Extensible Prototype Registry (IDs, schemas, enable/disable, discovery)
 ├── services/
 │   └── storage/            # Pluggable persistence layer (IStorageAdapter, LocalStorageAdapter, seedData)
 ├── store/
-│   └── useDeadlineStore.ts # Central Zustand store with audio feedback and async dispatchers
+│   └── useDeadlineStore.ts # Central Zustand store with async dispatchers, AI actions, and audio feedback
 ├── types/
-│   └── index.ts            # Domain models (Deadline, Deliverable, Milestone, ExecutionApproach)
+│   └── index.ts            # Strict domain models (Deadline, Deliverable, Milestone, ExecutionApproach, AI types)
 ├── components/
 │   ├── ui/                 # Reusable UI primitives (Badge, Button, CountdownTimer, ProgressBar, Modal, Input, Textarea)
 │   ├── layout/             # Collapsible Sidebar, Command Header, Quick Search Popover, Mobile Drawer
@@ -194,7 +198,7 @@ src/
 │   ├── workspace/          # Dedicated project workspace, live countdown, milestones, scratchpad, report export
 │   ├── deliverables/       # Deliverables Hub & Final Submission Modal
 │   ├── analytics/          # Recharts velocity & priority distribution charts
-│   └── settings/           # Appearance toggle, JSON backup/import, storage inspection
+│   └── settings/           # Appearance toggle, AI Integrations manager, JSON backup/import, storage inspection
 ├── lib/
 │   ├── utils.ts            # Date handling, formatTimeRemaining (DST-safe), Markdown report generator
 │   └── audio.ts            # Synthesized Web Audio harmonic chimes
@@ -235,7 +239,7 @@ npm install
 npm run dev
 # Open http://localhost:3000 in your browser
 
-# 4. Run automated test suite (36 tests)
+# 4. Run automated test suite (56 tests)
 npm test
 
 # 5. Run linter

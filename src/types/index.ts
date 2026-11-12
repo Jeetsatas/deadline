@@ -146,3 +146,7 @@ export interface DashboardStats {
   overdue: number;
   deliveryRate: number; // %
 }
+
+// Re-export AI Integration domain types
+export * from '@/core/ai/types';
+

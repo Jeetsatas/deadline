@@ -44,7 +44,7 @@ Every deadline answers six fundamental questions:
 - **State Management:** Zustand 5.0 (`src/store/useDeadlineStore.ts`).
 - **Persistence:** Modular `IStorageAdapter` interface (`src/services/storage/IStorageAdapter.ts`) implemented via `LocalStorageAdapter`.
 - **Audio Feedback:** Synthesized Web Audio API harmonic chords (`src/lib/audio.ts`) with zero external assets.
-- **Testing:** Vitest 2.1 (`npm test` — 36 tests passing across 6 suites).
+- **Testing:** Vitest 2.1 (`npm test` — 56 tests passing across 8 suites).
 - **Linter & CI:** ESLint 10 (`npm run lint`), GitHub Actions (`.github/workflows/ci.yml`).
 
 ---
@@ -75,6 +75,21 @@ npm run build
 ```
 src/
 ├── core/
+│   ├── ai/                           # Deliverable-agnostic AI orchestration foundation
+│   │   ├── types.ts                  # IAIProvider, IAIProviderRegistry, IAIExecutionService, IAIContextBuilder
+│   │   ├── AIProviderRegistry.ts     # Provider registry (Anthropic, OpenAI, Gemini, Compatible)
+│   │   ├── AIContextBuilder.ts       # Converts any deliverable into structured AI context
+│   │   ├── AIExecutionService.ts     # Provider-agnostic planning & task decomposition
+│   │   ├── providers/
+│   │   │   ├── AnthropicProvider.ts  # Claude 3.7 Sonnet / 3.5 Sonnet / 3.5 Haiku (Active & Functional)
+│   │   │   ├── OpenAIProvider.ts     # GPT-4o / o3-mini (Interface Scaffolding • Phase 2)
+│   │   │   ├── GeminiProvider.ts     # Gemini 2.0 Flash / Pro (Interface Scaffolding • Phase 2)
+│   │   │   └── OpenAICompatibleProvider.ts # Ollama / vLLM (Interface Scaffolding • Phase 2)
+│   │   └── ai.test.ts                # Unit tests for registry, context builder, and provider isolation
+│   ├── security/                     # Credential protection boundary
+│   │   ├── ICredentialStorage.ts     # Strict secret storage interface & key masking
+│   │   ├── SessionMemoryCredentialStore.ts # Volatile in-memory store (zero LocalStorage leak)
+│   │   └── security.test.ts          # Unit tests verifying secrets never reach storage or exports
 │   ├── execution/
 │   │   ├── index.ts                  # Execution engine (bottlenecks, velocity scoring, triage)
 │   │   └── execution.test.ts         # Execution engine unit tests
@@ -89,9 +104,9 @@ src/
 │       ├── seedData.ts               # Realistic initial state (Calculator App demo scenario)
 │       └── functionalFlows.test.ts   # LocalStorage & full lifecycle tests
 ├── store/
-│   └── useDeadlineStore.ts           # Central Zustand store with async dispatchers and audio chimes
+│   └── useDeadlineStore.ts           # Central Zustand store with async dispatchers, AI actions, and audio chimes
 ├── types/
-│   └── index.ts                      # Strict TypeScript types (Deadline, Deliverable, Milestone, ExecutionApproach)
+│   └── index.ts                      # Strict TypeScript types (Deadline, Deliverable, Milestone, ExecutionApproach, AI types)
 ├── components/
 │   ├── ui/                           # Primitives (Badge, Button, CountdownTimer, ProgressBar, Modal, Input, Textarea)
 │   ├── layout/                       # Collapsible Sidebar, Command Header, Quick Search, Mobile Drawer
@@ -108,7 +123,8 @@ src/
 │   ├── analytics/
 │   │   └── AnalyticsView.tsx         # Recharts delivery velocity and priority charts
 │   └── settings/
-│       └── SettingsView.tsx          # Dark/light theme, JSON backup/restore, storage inspection
+│       ├── SettingsView.tsx          # Settings shell with General & AI Integrations tabs
+│       └── AIIntegrationsSettings.tsx# Provider configuration, model picker, and connection tester
 ├── lib/
 │   ├── utils.ts                      # Date handling (DST-safe epoch diffs), formatTimeRemaining, Markdown report generator
 │   ├── utils.test.ts                 # Utility function tests
@@ -122,24 +138,30 @@ src/
 
 ## 6. Current Implementation Status
 
-### Implemented Features (Phase 1 / ~30% Foundation)
-1. **Velocity Command Dashboard**: Statistics (Active, Due Today, Due Tomorrow, Completed, Overdue, Delivery Rate) and Urgency Radar.
-2. **7-Step Deadline Creation Experience**:
-   - Step 1: Define Work (Name, Context, Plain-language expected output).
-   - Step 2: Deliverable Category (`software`, `presentation`, `assignment`, `research_paper`, `report`, `design`, `video`, `other`).
-   - Step 3: Execution Approach (`prototype_first`, `output_only`, `guided_execution`).
-   - Step 4: Prototype Selection Architecture (Registry-driven with category filtering and empty state).
-   - Step 5: Define Success (Expected Final Output vs. Minimum Acceptable Output MVP fallback).
-   - Step 6: Schedule & Priority (Local calendar date, cutoff time, priority, tags, reference links).
-   - Step 7: Review & Confirm with step-jump editing.
-3. **Dedicated Workspace**: Target Output focal point, Prototype First banner, Fallback MVP card, live monotonic countdown, milestone checklist with <kbd>▲</kbd>/<kbd>▼</kbd> reordering, auto-saving scratchpad, and Markdown report export.
-4. **Deliverable Submission Gateway**: Distinct submission flow for live URLs, repos, and files with verification notes.
-5. **Data Resilience**: Full JSON backup and restore, LocalStorage versioning, DST-safe date calculations.
+### Implemented Features (Phase 1 AI Foundation & Core Platform)
+1. **AI Provider Abstraction & Registry (`src/core/ai`)**:
+   - `IAIProvider` and `IAIProviderRegistry` decouple Deadline from any single AI vendor.
+   - **Anthropic Provider Adapter:** Genuinely functional adapter supporting Claude 3.7 Sonnet, Claude 3.5 Sonnet, and Claude 3.5 Haiku, with connection testing, CORS browser handling, and execution plan synthesis.
+   - **Provider Interface Scaffolding:** OpenAI, Google Gemini, and OpenAI-Compatible adapters prepared with full model metadata for Phase 2 implementation.
+2. **Session-Only Security Boundary (`src/core/security`)**:
+   - `SessionMemoryCredentialStore` keeps API keys strictly in volatile browser memory.
+   - Zero keys written to `LocalStorage`.
+   - Zero keys included in `exportAllData()` JSON backups.
+   - Full API key masking in UI (`sk-ant-••••••••8f2a`).
+   - Endpoint URL validation preventing SSRF and protocol injection.
+3. **Deliverable-Agnostic AI Context Builder**:
+   - Transforms requirements for any deliverable medium (`software`, `presentation`, `research_paper`, `assignment`, `report`, `design`, `video`, `other`) into structured AI execution briefs.
+4. **AI Integrations Settings UI**:
+   - Dedicated Settings tab with provider cards, connection testing, latency feedback, model selection, and memory security indicators.
+5. **Velocity Command Dashboard & 7-Step Creation Wizard**:
+   - Complete deadline execution workflow with target output focal point and fallback MVP guardrails.
+6. **Dedicated Workspace & Deliverable Gateway**:
+   - DST-safe live countdown, milestone reordering, audio chimes, and markdown report export.
 
 ### Current Limitations (Next Phases)
 - Concrete prototype blueprints have not yet been registered (intentionally deferred until the founder provides specifications).
-- No automated scaffold generators or sandbox execution runners.
-- No AI provider integrations.
+- Phase 2 will introduce IDE selection, `DEADLINE_TASK.md` handoff generation, and workspace AI execution panels.
+- Phase 3 will introduce local companion daemon, authenticated IDE pairing, and live execution status feedback.
 - No remote cloud databases (persistence is LocalStorage; `IStorageAdapter` is ready for Supabase).
 - No user authentication or multi-tenant team collaboration.
 
@@ -153,3 +175,4 @@ When the founder supplies the prototype category specifications:
 3. **Output Generation**: Build structured output generators and verification checks.
 4. **Optional AI Integrations**: Design provider-agnostic execution assistance (OpenAI, Anthropic, Gemini, local models) with user-provided API keys.
 5. **Deliverable Verification**: Enhance submission validation to confirm that artifacts satisfy the Expected Output and MVP criteria.
+

@@ -12,6 +12,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Milestone Release: Product Experience & Prototype Architecture
 
 #### Added
+- **AI Integration Foundation (Phase 1):**
+  - Deliverable-agnostic AI provider abstraction and registry (`IAIProvider`, `IAIProviderRegistry`, `AIExecutionService`).
+  - **Anthropic Provider Adapter:** Genuinely functional integration supporting Claude 3.7 Sonnet, Claude 3.5 Sonnet, and Claude 3.5 Haiku, with connection testing, CORS browser handling, and structured execution plan synthesis.
+  - **Provider Interface Scaffolding:** Clean interfaces and model metadata prepared for OpenAI, Google Gemini, and OpenAI-Compatible endpoints (scheduled for Phase 2).
+  - **Deliverable-Agnostic AI Context Builder:** Adapts structured context and specialized system prompts across software, presentations, research papers, assignments, reports, designs, and videos.
+  - **Session-Only Security Boundary:** `SessionMemoryCredentialStore` keeps credentials strictly in volatile browser memory; zero keys in LocalStorage, zero keys in JSON exports, full UI masking (`sk-ant-••••••••8f2a`), and endpoint URL validation.
+  - **AI Integrations Settings View:** Card-based UI with provider status, model selectors, custom endpoint URLs, connection testing with latency reporting, and session memory alerts.
+  - **Expanded Test Suite:** 56 passing tests across 8 test suites verifying security isolation, context building, provider validation, and date calculations.
+
 - **Core Product Experience & Multi-Step Wizard:**
   - 7-step guided deadline creation workflow:
     - Step 1: Define Your Work (Project name, context description, plain-language expected output).

@@ -8,9 +8,16 @@ import {
   FinalDeliverable,
   ReferenceLink,
   Milestone,
+  AIProviderId,
+  AIProviderConfig,
+  AIConnectionTestResult,
+  AIExecutionPlan,
 } from '@/types';
 import { storageService } from '@/services/storage';
 import { executionEngine } from '@/core/execution';
+import { aiExecutionService } from '@/core/ai/AIExecutionService';
+import { credentialStorage } from '@/core/security/SessionMemoryCredentialStore';
+import { maskApiKey } from '@/core/security/ICredentialStorage';
 import { isDueToday, isDueTomorrow, createIsoFromLocal } from '@/lib/utils';
 import { playMilestoneChime, playDeliverableChime } from '@/lib/audio';
 
@@ -39,6 +46,12 @@ interface DeadlineStoreState {
   isLoading: boolean;
   error: string | null;
 
+  // AI Integration State (Session & Metadata)
+  configuredProviders: Record<string, AIProviderConfig>;
+  activeExecutionPlans: Record<string, AIExecutionPlan>;
+  isTestingProvider: boolean;
+  isGeneratingPlan: boolean;
+
   // Filter
   filter: DeadlineFilter;
 
@@ -52,6 +65,15 @@ interface DeadlineStoreState {
   openCreateModal: (editing?: Deadline | null) => void;
   closeCreateModal: () => void;
   setSearchQuery: (query: string) => void;
+
+  // Actions - AI Integrations
+  saveProviderConfig: (config: Omit<AIProviderConfig, 'createdAt' | 'updatedAt'>, apiKey?: string) => Promise<void>;
+  removeProviderConfig: (providerId: AIProviderId) => Promise<void>;
+  testProviderConnection: (providerId: AIProviderId, apiKey?: string, baseUrl?: string, modelId?: string) => Promise<AIConnectionTestResult>;
+  setProviderApiKey: (providerId: AIProviderId, apiKey: string) => Promise<void>;
+  getMaskedApiKey: (providerId: AIProviderId) => Promise<string>;
+  hasProviderApiKey: (providerId: AIProviderId) => Promise<boolean>;
+  generateExecutionPlan: (deadlineId: string, customInstructions?: string) => Promise<AIExecutionPlan>;
 
   // Actions - Data Operations
   loadInitialData: () => Promise<void>;
@@ -104,6 +126,11 @@ export const useDeadlineStore = create<DeadlineStoreState>((set, get) => ({
   user: null,
   isLoading: true,
   error: null,
+
+  configuredProviders: {},
+  activeExecutionPlans: {},
+  isTestingProvider: false,
+  isGeneratingPlan: false,
 
   filter: defaultFilter,
 
@@ -189,7 +216,24 @@ export const useDeadlineStore = create<DeadlineStoreState>((set, get) => ({
         storageService.getActivities(),
         storageService.getUser(),
       ]);
-      set({ deadlines, activities, user, isLoading: false });
+
+      let parsedProviders: Record<string, AIProviderConfig> = {};
+      try {
+        const rawProviders = localStorage.getItem('deadline_app_ai_providers_v1');
+        if (rawProviders) {
+          parsedProviders = JSON.parse(rawProviders);
+        }
+      } catch {
+        // Ignore JSON error
+      }
+
+      set({
+        deadlines,
+        activities,
+        user,
+        configuredProviders: parsedProviders,
+        isLoading: false,
+      });
     } catch (e) {
       console.error('Error loading initial data', e);
       set({ error: (e as Error).message, isLoading: false });
@@ -635,5 +679,149 @@ export const useDeadlineStore = create<DeadlineStoreState>((set, get) => ({
       set({ deadlines, activities, user, selectedDeadlineId: null });
     }
     return ok;
+  },
+
+  saveProviderConfig: async (config, apiKey) => {
+    const nowIso = new Date().toISOString();
+    const updatedConfig: AIProviderConfig = {
+      ...config,
+      createdAt: get().configuredProviders[config.providerId]?.createdAt || nowIso,
+      updatedAt: nowIso,
+    };
+
+    if (apiKey && apiKey.trim()) {
+      await credentialStorage.saveSecret(`ai_key_${config.providerId}`, apiKey.trim());
+    }
+
+    const updated = {
+      ...get().configuredProviders,
+      [config.providerId]: updatedConfig,
+    };
+
+    set({ configuredProviders: updated });
+    try {
+      localStorage.setItem('deadline_app_ai_providers_v1', JSON.stringify(updated));
+    } catch {
+      // Ignore
+    }
+  },
+
+  removeProviderConfig: async (providerId) => {
+    await credentialStorage.clearSecret(`ai_key_${providerId}`);
+    const next = { ...get().configuredProviders };
+    delete next[providerId];
+    set({ configuredProviders: next });
+    try {
+      localStorage.setItem('deadline_app_ai_providers_v1', JSON.stringify(next));
+    } catch {
+      // Ignore
+    }
+  },
+
+  testProviderConnection: async (providerId, apiKey, baseUrl, modelId) => {
+    set({ isTestingProvider: true });
+    try {
+      let keyToTest = apiKey;
+      if (!keyToTest) {
+        const stored = await credentialStorage.getSecret(`ai_key_${providerId}`);
+        if (stored) keyToTest = stored;
+      }
+
+      const res = await aiExecutionService.testConnection(
+        providerId,
+        keyToTest || '',
+        baseUrl,
+        modelId
+      );
+
+      // If we have an existing config, update its test status
+      const existing = get().configuredProviders[providerId];
+      if (existing) {
+        const updated: AIProviderConfig = {
+          ...existing,
+          lastTestedAt: new Date().toISOString(),
+          lastTestStatus: res.success ? 'success' : 'failed',
+          lastTestError: res.success ? undefined : res.message,
+          updatedAt: new Date().toISOString(),
+        };
+        const updatedMap = { ...get().configuredProviders, [providerId]: updated };
+        set({ configuredProviders: updatedMap });
+        try {
+          localStorage.setItem('deadline_app_ai_providers_v1', JSON.stringify(updatedMap));
+        } catch {
+          // Ignore
+        }
+      }
+
+      set({ isTestingProvider: false });
+      return res;
+    } catch (e) {
+      set({ isTestingProvider: false });
+      return {
+        success: false,
+        message: (e as Error).message || 'Connection test failed unexpectedly.',
+      };
+    }
+  },
+
+  setProviderApiKey: async (providerId, apiKey) => {
+    await credentialStorage.saveSecret(`ai_key_${providerId}`, apiKey);
+  },
+
+  getMaskedApiKey: async (providerId) => {
+    const key = await credentialStorage.getSecret(`ai_key_${providerId}`);
+    return key ? maskApiKey(key) : '';
+  },
+
+  hasProviderApiKey: async (providerId) => {
+    return await credentialStorage.hasSecret(`ai_key_${providerId}`);
+  },
+
+  generateExecutionPlan: async (deadlineId, customInstructions) => {
+    const target = get().deadlines.find((d) => d.id === deadlineId);
+    if (!target) {
+      throw new Error(`Deadline "${deadlineId}" not found.`);
+    }
+
+    set({ isGeneratingPlan: true });
+    try {
+      // Find configured provider or default to Anthropic
+      const providers = get().configuredProviders;
+      const configuredId =
+        (Object.keys(providers).find((k) => providers[k]?.isEnabled) as AIProviderId) || 'anthropic';
+      const config = providers[configuredId];
+
+      const plan = await aiExecutionService.generateExecutionPlan(
+        target,
+        configuredId,
+        undefined,
+        config?.baseUrl,
+        config?.selectedModelId,
+        customInstructions
+      );
+
+      set((state) => ({
+        activeExecutionPlans: {
+          ...state.activeExecutionPlans,
+          [deadlineId]: plan,
+        },
+        isGeneratingPlan: false,
+      }));
+
+      // Record activity
+      await storageService.addActivity({
+        id: `act_${Date.now()}`,
+        deadlineId,
+        deadlineTitle: target.title,
+        type: 'updated',
+        title: `Generated AI execution plan for "${target.title}" using ${configuredId}`,
+        timestamp: new Date().toISOString(),
+      });
+
+      return plan;
+    } catch (e) {
+      set({ isGeneratingPlan: false });
+      throw e;
+    }
   },
 }));
