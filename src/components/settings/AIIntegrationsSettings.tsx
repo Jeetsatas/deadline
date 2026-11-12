@@ -1,7 +1,13 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { useDeadlineStore } from '@/store/useDeadlineStore';
 import { aiProviderRegistry } from '@/core/ai/AIProviderRegistry';
-import { AIProviderId, AIProviderMetadata, AIConnectionTestResult, AIModelOption, IAIProvider } from '@/core/ai/types';
+import {
+  AIProviderId,
+  AIProviderMetadata,
+  AIConnectionTestResult,
+  AIModelMetadata,
+  IAIProvider,
+} from '@/core/ai/types';
 import { credentialStorage } from '@/core/security/SessionMemoryCredentialStore';
 import { Button } from '@/components/ui/Button';
 import { Badge } from '@/components/ui/Badge';
@@ -17,14 +23,21 @@ import {
   RefreshCw,
   Cpu,
   Trash2,
+  AlertTriangle,
+  Loader2,
+  Info,
 } from 'lucide-react';
 
 export const AIIntegrationsSettings: React.FC = () => {
   const {
     configuredProviders,
+    discoveredModels,
+    modelDiscoveryStatus,
+    isDiscoveringModels,
     saveProviderConfig,
     removeProviderConfig,
     testProviderConnection,
+    discoverProviderModels,
     getMaskedApiKey,
   } = useDeadlineStore();
 
@@ -39,35 +52,64 @@ export const AIIntegrationsSettings: React.FC = () => {
   const [testResults, setTestResults] = useState<Record<string, AIConnectionTestResult | null>>({});
   const [testingId, setTestingId] = useState<string | null>(null);
   const [saveSuccess, setSaveSuccess] = useState<Record<string, boolean>>({});
-  const [customModels, setCustomModels] = useState<Record<string, AIModelOption[]>>({});
-  const [isRefreshingModels, setIsRefreshingModels] = useState<Record<string, boolean>>({});
 
-  // Load existing configs into local form states
+  // Helper to trigger discovery
+  const runModelDiscovery = useCallback(
+    async (providerId: AIProviderId, key?: string) => {
+      let keyToUse = key?.trim();
+      if (!keyToUse) {
+        const stored = await credentialStorage.getSecret(`ai_key_${providerId}`);
+        if (stored) keyToUse = stored;
+      }
+      if (!keyToUse) return;
+
+      const baseUrl = baseUrls[providerId];
+      await discoverProviderModels(providerId, keyToUse, baseUrl);
+    },
+    [baseUrls, discoverProviderModels]
+  );
+
+  // Load existing configs into local form states & initial discovery
   useEffect(() => {
-    const loadKeys = async () => {
+    const loadState = async () => {
       const masks: Record<string, string> = {};
       for (const p of providers) {
         const masked = await getMaskedApiKey(p.id);
         if (masked) masks[p.id] = masked;
       }
       setMaskedKeys(masks);
+
+      const initialModels: Record<string, string> = {};
+      const initialUrls: Record<string, string> = {};
+
+      for (const p of providers) {
+        const existing = configuredProviders[p.id];
+        const knownDiscovered = discoveredModels[p.id] || [];
+
+        // Fallback for providers that still use static availableModels
+        const staticFallback = p.getMetadata().availableModels;
+        const defaultModelId =
+          knownDiscovered.find((m) => m.id.includes('2.0-flash'))?.id ||
+          knownDiscovered[0]?.id ||
+          staticFallback.find((m) => m.isDefault)?.id ||
+          staticFallback[0]?.id ||
+          '';
+
+        initialModels[p.id] = existing?.selectedModelId || defaultModelId;
+        initialUrls[p.id] = existing?.baseUrl || p.getMetadata().defaultBaseUrl || '';
+
+        // Auto-discover if we have a key in memory but no models discovered yet
+        if (masks[p.id] && (!knownDiscovered || knownDiscovered.length === 0)) {
+          runModelDiscovery(p.id);
+        }
+      }
+
+      setSelectedModels((prev) => ({ ...initialModels, ...prev }));
+      setBaseUrls((prev) => ({ ...initialUrls, ...prev }));
     };
 
-    loadKeys();
-
-    const initialModels: Record<string, string> = {};
-    const initialUrls: Record<string, string> = {};
-
-    providers.forEach((p) => {
-      const existing = configuredProviders[p.id];
-      const defaultModel = p.getMetadata().availableModels.find((m) => m.isDefault)?.id || p.getMetadata().availableModels[0]?.id;
-      initialModels[p.id] = existing?.selectedModelId || defaultModel || '';
-      initialUrls[p.id] = existing?.baseUrl || p.getMetadata().defaultBaseUrl || '';
-    });
-
-    setSelectedModels(initialModels);
-    setBaseUrls(initialUrls);
-  }, [configuredProviders, getMaskedApiKey]);
+    loadState();
+  }, [configuredProviders, getMaskedApiKey, providers, discoveredModels, runModelDiscovery]);
 
   const handleTest = async (providerId: AIProviderId) => {
     setTestingId(providerId);
@@ -80,37 +122,36 @@ export const AIIntegrationsSettings: React.FC = () => {
     const result = await testProviderConnection(providerId, key, baseUrl, modelId);
     setTestResults((prev) => ({ ...prev, [providerId]: result }));
     setTestingId(null);
+
+    // If test connection succeeded and key was valid, also discover live models
+    if (result.success) {
+      await runModelDiscovery(providerId, key);
+    }
   };
 
   const handleRefreshModels = async (provider: IAIProvider) => {
-    if (!provider.fetchAvailableModels) return;
-    let key = apiKeys[provider.id]?.trim();
-    if (!key) {
-      const stored = await credentialStorage.getSecret(`ai_key_${provider.id}`);
-      if (stored) key = stored;
-    }
+    const key = apiKeys[provider.id] || '';
+    const stored = await credentialStorage.getSecret(`ai_key_${provider.id}`);
+    const effectiveKey = key.trim() || stored;
 
-    if (!key) {
-      alert('Please enter an API key first to fetch live models from Google.');
+    if (!effectiveKey) {
+      alert(`Please enter an API key for ${provider.name} first to discover available models.`);
       return;
     }
 
-    setIsRefreshingModels((prev) => ({ ...prev, [provider.id]: true }));
-    try {
-      const fetched = await provider.fetchAvailableModels(key, baseUrls[provider.id]);
-      if (fetched && fetched.length > 0) {
-        setCustomModels((prev) => ({ ...prev, [provider.id]: fetched }));
-      }
-    } catch (e) {
-      console.warn('Failed to fetch live models', e);
-    } finally {
-      setIsRefreshingModels((prev) => ({ ...prev, [provider.id]: false }));
-    }
+    await runModelDiscovery(provider.id, effectiveKey);
   };
 
   const handleSave = async (metadata: AIProviderMetadata) => {
     const key = apiKeys[metadata.id];
-    const modelId = selectedModels[metadata.id] || metadata.availableModels[0]?.id || '';
+    const providerDiscovered = discoveredModels[metadata.id] || [];
+    const fallbackStatic = metadata.availableModels;
+
+    const modelId =
+      selectedModels[metadata.id] ||
+      providerDiscovered[0]?.id ||
+      fallbackStatic[0]?.id ||
+      '';
     const baseUrl = baseUrls[metadata.id] || metadata.defaultBaseUrl;
 
     await saveProviderConfig(
@@ -125,6 +166,11 @@ export const AIIntegrationsSettings: React.FC = () => {
       },
       key
     );
+
+    // If a key was provided in input, trigger discovery immediately
+    if (key?.trim()) {
+      await runModelDiscovery(metadata.id, key);
+    }
 
     // Refresh masked display
     const masked = await getMaskedApiKey(metadata.id);
@@ -186,7 +232,32 @@ export const AIIntegrationsSettings: React.FC = () => {
           const isTesting = testingId === metadata.id;
           const isAnthropic = metadata.id === 'anthropic';
           const isGemini = metadata.id === 'gemini';
-          const availableModels = customModels[metadata.id] || metadata.availableModels;
+
+          // Discovered models from API
+          const liveDiscovered: AIModelMetadata[] = discoveredModels[metadata.id] || [];
+          const discoveryInfo = modelDiscoveryStatus[metadata.id];
+          const isFetchingModels = isDiscoveringModels[metadata.id] || false;
+
+          // Model list to display:
+          // For Gemini: strictly live discovered models (no hardcoded fallback)
+          // For other providers: live discovered or metadata static list
+          const availableModels: { id: string; name: string; description?: string; isDefault?: boolean }[] =
+            liveDiscovered.length > 0
+              ? liveDiscovered.map((m) => ({
+                  id: m.id,
+                  name: m.displayName,
+                  description: m.description,
+                  isDefault: m.id.includes('2.0-flash'),
+                }))
+              : isGemini
+              ? []
+              : metadata.availableModels;
+
+          const currentSelected = selectedModels[metadata.id] || config?.selectedModelId || '';
+          const isSelectedModelUnavailable =
+            liveDiscovered.length > 0 &&
+            Boolean(currentSelected) &&
+            !liveDiscovered.some((m) => m.id.toLowerCase() === currentSelected.toLowerCase());
 
           return (
             <div
@@ -200,13 +271,15 @@ export const AIIntegrationsSettings: React.FC = () => {
               {/* Header */}
               <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-border">
                 <div className="flex items-center gap-3">
-                  <div className={`p-2 rounded-lg shrink-0 ${
-                    isAnthropic
-                      ? 'bg-orange-500/10 text-orange-600 dark:text-orange-400'
-                      : isGemini
-                      ? 'bg-blue-500/10 text-blue-600 dark:text-blue-400'
-                      : 'bg-secondary text-muted-foreground'
-                  }`}>
+                  <div
+                    className={`p-2 rounded-lg shrink-0 ${
+                      isAnthropic
+                        ? 'bg-orange-500/10 text-orange-600 dark:text-orange-400'
+                        : isGemini
+                        ? 'bg-blue-500/10 text-blue-600 dark:text-blue-400'
+                        : 'bg-secondary text-muted-foreground'
+                    }`}
+                  >
                     <Cpu className="h-5 w-5" />
                   </div>
                   <div>
@@ -314,46 +387,142 @@ export const AIIntegrationsSettings: React.FC = () => {
                 {/* Model Selection */}
                 <div className="space-y-1.5">
                   <div className="flex items-center justify-between text-xs">
-                    <label className="font-medium text-foreground">
-                      Model Selection
-                    </label>
-                    {provider.fetchAvailableModels && (hasKey || apiKeys[metadata.id]) && (
+                    <div className="flex items-center gap-2">
+                      <label className="font-medium text-foreground">
+                        Model Selection
+                      </label>
+                      {liveDiscovered.length > 0 && (
+                        <span className="text-[10px] font-mono text-muted-foreground bg-muted/50 px-1.5 py-0.5 rounded">
+                          Available: {liveDiscovered.length}
+                        </span>
+                      )}
+                    </div>
+
+                    {(hasKey || apiKeys[metadata.id]) && (
                       <button
                         type="button"
                         onClick={() => handleRefreshModels(provider)}
-                        disabled={isRefreshingModels[metadata.id]}
-                        className="text-[11px] text-primary hover:underline flex items-center gap-1 font-mono"
-                        title="Query Google Gemini API for live available models"
+                        disabled={isFetchingModels}
+                        className="text-[11px] text-primary hover:underline flex items-center gap-1 font-mono disabled:opacity-50"
+                        title="Query provider API directly for live available models"
                       >
-                        <RefreshCw className={`h-3 w-3 ${isRefreshingModels[metadata.id] ? 'animate-spin' : ''}`} />
-                        <span>Live Models</span>
+                        <RefreshCw
+                          className={`h-3 w-3 ${isFetchingModels ? 'animate-spin text-primary' : ''}`}
+                        />
+                        <span>{isFetchingModels ? 'Fetching...' : 'Refresh Models'}</span>
                       </button>
                     )}
                   </div>
 
                   <select
-                    value={selectedModels[metadata.id] || ''}
+                    value={currentSelected}
                     onChange={(e) =>
                       setSelectedModels({
                         ...selectedModels,
                         [metadata.id]: e.target.value,
                       })
                     }
-                    className="h-9 w-full rounded-md border border-input bg-background/50 px-3 text-xs text-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+                    disabled={isFetchingModels || availableModels.length === 0}
+                    className="h-9 w-full rounded-md border border-input bg-background/50 px-3 text-xs text-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:opacity-60"
                   >
-                    {availableModels.map((m) => (
-                      <option key={m.id} value={m.id}>
-                        {m.name} {m.isDefault ? '(Default)' : ''}
+                    {availableModels.length === 0 ? (
+                      <option value="" disabled>
+                        {isFetchingModels
+                          ? 'Discovering available models...'
+                          : isGemini
+                          ? 'No models discovered — enter API key and click Refresh Models'
+                          : 'No models available'}
                       </option>
-                    ))}
+                    ) : (
+                      availableModels.map((m) => (
+                        <option key={m.id} value={m.id}>
+                          {m.name} ({m.id}) {m.isDefault ? '• Default' : ''}
+                        </option>
+                      ))
+                    )}
                   </select>
                 </div>
               </div>
 
+              {/* Unavailable Model Warning Alert */}
+              {isSelectedModelUnavailable && (
+                <div className="p-3 rounded-lg border border-amber-500/30 bg-amber-500/10 flex items-start gap-2.5 text-xs text-amber-600 dark:text-amber-400">
+                  <AlertTriangle className="h-4 w-4 shrink-0 mt-0.5" />
+                  <div>
+                    <p className="font-semibold">
+                      The selected model is no longer available for this API key. Refresh models and select another model.
+                    </p>
+                    <p className="text-[11px] opacity-90 mt-0.5 font-mono">
+                      Previously saved model identifier: &ldquo;{currentSelected}&rdquo; was not returned by the provider API.
+                    </p>
+                  </div>
+                </div>
+              )}
+
+              {/* Dynamic Discovery Status / Error Alerts */}
+              {discoveryInfo && discoveryInfo.status !== 'models_loaded' && (
+                <div className="text-xs">
+                  {discoveryInfo.status === 'fetching' && (
+                    <div className="p-2.5 rounded-lg border border-blue-500/20 bg-blue-500/10 flex items-center gap-2 text-blue-600 dark:text-blue-400">
+                      <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                      <span>Querying provider API for available models...</span>
+                    </div>
+                  )}
+
+                  {discoveryInfo.status === 'no_compatible_models' && (
+                    <div className="p-2.5 rounded-lg border border-amber-500/20 bg-amber-500/10 flex items-start gap-2 text-amber-600 dark:text-amber-400">
+                      <Info className="h-4 w-4 shrink-0 mt-0.5" />
+                      <div>
+                        <p className="font-semibold">No compatible models discovered</p>
+                        <p className="text-[11px] opacity-90 mt-0.5">
+                          The API response did not include any models supporting the required &ldquo;generateContent&rdquo; capability for this key.
+                        </p>
+                      </div>
+                    </div>
+                  )}
+
+                  {discoveryInfo.status === 'invalid_key' && (
+                    <div className="p-2.5 rounded-lg border border-red-500/20 bg-red-500/10 flex items-start gap-2 text-red-600 dark:text-red-400">
+                      <XCircle className="h-4 w-4 shrink-0 mt-0.5" />
+                      <div>
+                        <p className="font-semibold">Model Discovery: Invalid API Key</p>
+                        <p className="text-[11px] opacity-90 mt-0.5">
+                          {discoveryInfo.error || 'Authentication failed. Please verify your Google AI Studio API key.'}
+                        </p>
+                      </div>
+                    </div>
+                  )}
+
+                  {discoveryInfo.status === 'quota_exceeded' && (
+                    <div className="p-2.5 rounded-lg border border-red-500/20 bg-red-500/10 flex items-start gap-2 text-red-600 dark:text-red-400">
+                      <AlertTriangle className="h-4 w-4 shrink-0 mt-0.5" />
+                      <div>
+                        <p className="font-semibold">Model Discovery: Quota Exceeded (RESOURCE_EXHAUSTED)</p>
+                        <p className="text-[11px] opacity-90 mt-0.5">
+                          {discoveryInfo.error || 'Google Gemini quota or rate limit exceeded. Please check your Google AI Studio plan or retry shortly.'}
+                        </p>
+                      </div>
+                    </div>
+                  )}
+
+                  {discoveryInfo.status === 'network_error' && (
+                    <div className="p-2.5 rounded-lg border border-red-500/20 bg-red-500/10 flex items-start gap-2 text-red-600 dark:text-red-400">
+                      <XCircle className="h-4 w-4 shrink-0 mt-0.5" />
+                      <div>
+                        <p className="font-semibold">Model Discovery: Network / Endpoint Error</p>
+                        <p className="text-[11px] opacity-90 mt-0.5 font-mono">
+                          {discoveryInfo.error || 'Unable to connect to the Google Gemini models endpoint.'}
+                        </p>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
+
               {/* Base URL (for compatible endpoints or custom proxy) */}
               {(metadata.requiresBaseUrl || metadata.defaultBaseUrl) && (
                 <div className="space-y-1.5 pt-1">
-                  <label className="block text-xs font-medium text-foreground flex items-center justify-between">
+                  <label className="text-xs font-medium text-foreground flex items-center justify-between">
                     <span>Base Endpoint URL</span>
                     <span className="text-[10px] text-muted-foreground font-mono">
                       (Optional proxy / local host)

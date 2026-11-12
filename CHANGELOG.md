@@ -12,6 +12,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Milestone Release: Product Experience & Prototype Architecture
 
 #### Added
+- **Dynamic AI Model Discovery System:**
+  - Implemented provider-agnostic `IModelDiscoveryService` and `ModelDiscoveryService` (`src/core/ai/ModelDiscoveryService.ts`) for dynamic model fetching and runtime availability validation.
+  - Upgraded Google Gemini provider to query official endpoint `GET https://generativelanguage.googleapis.com/v1beta/models` using the user's `x-goog-api-key`.
+  - Removed all hardcoded model fallback lists (`DEFAULT_GEMINI_MODELS` array removed; `getMetadata().availableModels` defaults to empty `[]`).
+  - Strict generation capability filtering: only models with `generateContent` in `supportedGenerationMethods` are included; embedding-only models (`text-embedding-004`) are automatically excluded.
+  - Consistent model identifier normalization: all returned model names are stripped of the `models/` prefix across discovery and execution.
+  - Safe caching of non-sensitive model metadata (id, displayName, token limits, capabilities) in `localStorage` under `deadline_app_discovered_models_v1` so the UI remembers models across page reloads without touching disk for API keys.
+  - Model validation before plan generation: verifies key in active memory, verifies selected model exists in discovered list, and throws exact user-facing error if unavailable: *"The selected model is no longer available for this API key. Refresh models and select another model."*
+  - Comprehensive UI states in `AIIntegrationsSettings`: `no_key`, `fetching`, `models_loaded`, `no_compatible_models`, `invalid_key`, `quota_exceeded`, and `network_error` with manual "Refresh Models" button and model count indicator.
+  - Automated Vitest test suite (`src/core/ai/modelDiscovery.test.ts`) covering 11 critical discovery, filtering, normalization, error handling, and zero-key-leakage scenarios. Total test suite expanded to 79 passing tests across 9 test files.
+
 - **AI Integration Foundation & Live Providers:**
   - Deliverable-agnostic AI provider abstraction and registry (`IAIProvider`, `IAIProviderRegistry`, `AIExecutionService`).
   - **Google Gemini Provider Adapter:** Genuinely functional live integration supporting Gemini 2.0 Flash, Gemini 2.5 Flash, Gemini 2.0 Flash-Lite, Gemini 1.5 Pro, and Gemini 1.5 Flash, featuring live API connection testing, dynamic model discovery (`fetchAvailableModels`), structured JSON execution plan generation, and robust quota/auth error handling.

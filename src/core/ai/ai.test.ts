@@ -51,7 +51,8 @@ describe('AI Integration Foundation Suite', () => {
       const gemini = aiProviderRegistry.getProvider('gemini');
       expect(gemini).toBeDefined();
       expect(gemini?.getMetadata().isImplemented).toBe(true);
-      expect(gemini?.getMetadata().availableModels.length).toBeGreaterThanOrEqual(5);
+      // Hardcoded fallback models removed by design; dynamic model discovery is the source of truth
+      expect(gemini?.getMetadata().availableModels).toEqual([]);
 
       const compatible = aiProviderRegistry.getProvider('openai_compatible');
       expect(compatible).toBeDefined();

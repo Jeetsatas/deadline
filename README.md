@@ -239,7 +239,7 @@ npm install
 npm run dev
 # Open http://localhost:3000 in your browser
 
-# 4. Run automated test suite (66 tests)
+# 4. Run automated test suite (79 tests)
 npm test
 
 # 5. Run linter

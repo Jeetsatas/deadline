@@ -10,6 +10,59 @@ export interface AIModelOption {
   isDefault?: boolean;
 }
 
+export type ModelDiscoveryStatus =
+  | 'no_key'
+  | 'fetching'
+  | 'models_loaded'
+  | 'no_compatible_models'
+  | 'invalid_key'
+  | 'quota_exceeded'
+  | 'network_error';
+
+/**
+ * Normalized AI Model metadata discovered directly from provider APIs.
+ */
+export interface AIModelMetadata {
+  id: string; // Normalized model identifier (e.g. 'gemini-2.0-flash' with 'models/' stripped)
+  displayName: string;
+  description?: string;
+  provider: AIProviderId;
+  supportedCapabilities: string[]; // e.g. ['generateContent']
+  inputTokenLimit?: number;
+  outputTokenLimit?: number;
+  isAvailable: boolean;
+}
+
+/**
+ * Result returned by model discovery queries.
+ */
+export interface ModelDiscoveryResult {
+  success: boolean;
+  models: AIModelMetadata[];
+  provider: AIProviderId;
+  discoveredAt: string;
+  status: ModelDiscoveryStatus;
+  errorMessage?: string;
+  rawError?: string;
+}
+
+/**
+ * Interface for provider-agnostic Model Discovery Service
+ */
+export interface IModelDiscoveryService {
+  discoverModels(
+    providerId: AIProviderId,
+    apiKey: string,
+    baseUrl?: string
+  ): Promise<ModelDiscoveryResult>;
+  validateModelAvailability(
+    providerId: AIProviderId,
+    modelId: string,
+    apiKey: string,
+    baseUrl?: string
+  ): Promise<boolean>;
+}
+
 export interface AIProviderMetadata {
   id: AIProviderId;
   name: string;
@@ -115,6 +168,10 @@ export interface IAIProvider {
     baseUrl?: string,
     modelId?: string
   ): Promise<AIExecutionPlan>;
+  discoverModels?(
+    apiKey: string,
+    baseUrl?: string
+  ): Promise<ModelDiscoveryResult>;
   fetchAvailableModels?(
     apiKey: string,
     baseUrl?: string

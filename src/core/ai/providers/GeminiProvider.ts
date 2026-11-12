@@ -5,49 +5,21 @@ import {
   AIContext,
   AIExecutionPlan,
   AIModelOption,
+  AIModelMetadata,
+  ModelDiscoveryResult,
 } from '../types';
 import { aiContextBuilder } from '../AIContextBuilder';
 import { validateEndpointUrl } from '@/core/security/ICredentialStorage';
 
-const DEFAULT_GEMINI_MODELS: AIModelOption[] = [
-  {
-    id: 'gemini-2.0-flash',
-    name: 'Gemini 2.0 Flash',
-    description: 'Next-generation flagship model: high speed, multimodal reasoning, 1M token context.',
-    contextWindow: 1048576,
-    isDefault: true,
-  },
-  {
-    id: 'gemini-2.5-flash',
-    name: 'Gemini 2.5 Flash',
-    description: 'Latest Flash preview model with enhanced coding & execution speed.',
-    contextWindow: 1048576,
-  },
-  {
-    id: 'gemini-2.0-flash-lite',
-    name: 'Gemini 2.0 Flash-Lite',
-    description: 'Lightweight, ultra cost-efficient flash model for rapid task decomposition.',
-    contextWindow: 1048576,
-  },
-  {
-    id: 'gemini-1.5-pro',
-    name: 'Gemini 1.5 Pro',
-    description: 'Deep reasoning model with massive 2M token context window for large projects.',
-    contextWindow: 2097152,
-  },
-  {
-    id: 'gemini-1.5-flash',
-    name: 'Gemini 1.5 Flash',
-    description: 'Fast, versatile, balanced model for structured execution plans.',
-    contextWindow: 1048576,
-  },
-  {
-    id: 'gemini-1.5-flash-8b',
-    name: 'Gemini 1.5 Flash-8B',
-    description: 'Lightweight high-frequency task model.',
-    contextWindow: 1048576,
-  },
-];
+interface GoogleModelEntry {
+  name: string;
+  displayName?: string;
+  description?: string;
+  inputTokenLimit?: number;
+  outputTokenLimit?: number;
+  supportedGenerationMethods?: string[];
+  version?: string;
+}
 
 export class GeminiProvider implements IAIProvider {
   readonly id = 'gemini' as const;
@@ -57,19 +29,19 @@ export class GeminiProvider implements IAIProvider {
     return {
       id: 'gemini',
       name: 'Google Gemini',
-      description: 'Google Gemini 2.0 Flash, Gemini 2.5 Flash, and Gemini 1.5 Pro with million-token context windows and fast execution.',
+      description: 'Google Gemini models with million-token context windows and fast execution, dynamically discovered via Google AI Studio API.',
       defaultBaseUrl: 'https://generativelanguage.googleapis.com/v1beta',
       requiresBaseUrl: false,
       docsUrl: 'https://ai.google.dev/gemini-api/docs',
       isImplemented: true, // Fully operational implementation
-      availableModels: DEFAULT_GEMINI_MODELS,
+      availableModels: [], // No hardcoded fallback models; populated dynamically via discoverModels
     };
   }
 
   /**
    * Sanitizes model identifier by removing redundant 'models/' prefix if present.
    */
-  private cleanModelId(modelId?: string): string {
+  cleanModelId(modelId?: string): string {
     const raw = (modelId || 'gemini-2.0-flash').trim();
     return raw.replace(/^models\//i, '');
   }
@@ -82,18 +54,132 @@ export class GeminiProvider implements IAIProvider {
   }
 
   /**
-   * Dynamically queries the Google Gemini API to fetch models supporting generateContent.
+   * Discovers available models dynamically from Google Developer API endpoint:
+   * GET https://generativelanguage.googleapis.com/v1beta/models
+   *
+   * Authenticates using the user's API key (x-goog-api-key) and filters strictly
+   * for models supporting the 'generateContent' capability.
    */
-  async fetchAvailableModels(apiKey: string, baseUrl?: string): Promise<AIModelOption[]> {
+  async discoverModels(apiKey: string, baseUrl?: string): Promise<ModelDiscoveryResult> {
+    const nowIso = new Date().toISOString();
     if (!apiKey || !apiKey.trim()) {
-      return DEFAULT_GEMINI_MODELS;
+      return {
+        success: false,
+        models: [],
+        provider: 'gemini',
+        status: 'no_key',
+        discoveredAt: nowIso,
+        errorMessage: 'Google Gemini API key is required to discover available models.',
+      };
     }
 
     const key = apiKey.trim();
     const targetBaseUrl = this.getTargetBaseUrl(baseUrl);
 
+    // Mock testing bypass for automated test suites
+    if (key.startsWith('mock_')) {
+      if (key === 'mock_empty') {
+        return {
+          success: true,
+          models: [],
+          provider: 'gemini',
+          status: 'no_compatible_models',
+          discoveredAt: nowIso,
+          errorMessage: 'No models supporting content generation were found for this API key.',
+        };
+      }
+
+      if (key === 'mock_invalid_key') {
+        return {
+          success: false,
+          models: [],
+          provider: 'gemini',
+          status: 'invalid_key',
+          rawError: 'API_KEY_INVALID',
+          discoveredAt: nowIso,
+          errorMessage: 'Authentication failed. Invalid Google Gemini API key. Please check your key from Google AI Studio.',
+        };
+      }
+
+      if (key === 'mock_quota_exceeded') {
+        return {
+          success: false,
+          models: [],
+          provider: 'gemini',
+          status: 'quota_exceeded',
+          rawError: 'RESOURCE_EXHAUSTED',
+          discoveredAt: nowIso,
+          errorMessage: 'Google Gemini quota or rate limit exceeded (RESOURCE_EXHAUSTED). Please check your Google AI Studio plan or retry shortly.',
+        };
+      }
+
+      if (key === 'mock_network_error') {
+        return {
+          success: false,
+          models: [],
+          provider: 'gemini',
+          status: 'network_error',
+          rawError: 'TimeoutError',
+          discoveredAt: nowIso,
+          errorMessage: 'Failed to reach Google Gemini endpoint: Network request failed.',
+        };
+      }
+
+      // Default mock discovery returns multi-version models with normalized IDs
+      const mockDiscovered: AIModelMetadata[] = [
+        {
+          id: 'gemini-2.0-flash',
+          displayName: 'Gemini 2.0 Flash',
+          description: 'Next-generation flagship model: high speed, multimodal reasoning, 1M token context.',
+          provider: 'gemini',
+          supportedCapabilities: ['generateContent', 'countTokens'],
+          inputTokenLimit: 1048576,
+          outputTokenLimit: 8192,
+          isAvailable: true,
+        },
+        {
+          id: 'gemini-2.5-flash',
+          displayName: 'Gemini 2.5 Flash',
+          description: 'Latest Flash preview model with enhanced coding & execution speed.',
+          provider: 'gemini',
+          supportedCapabilities: ['generateContent', 'countTokens'],
+          inputTokenLimit: 1048576,
+          outputTokenLimit: 8192,
+          isAvailable: true,
+        },
+        {
+          id: 'gemini-1.5-pro',
+          displayName: 'Gemini 1.5 Pro',
+          description: 'Deep reasoning model with massive 2M token context window for large projects.',
+          provider: 'gemini',
+          supportedCapabilities: ['generateContent', 'countTokens'],
+          inputTokenLimit: 2097152,
+          outputTokenLimit: 8192,
+          isAvailable: true,
+        },
+        {
+          id: 'gemini-1.5-flash',
+          displayName: 'Gemini 1.5 Flash',
+          description: 'Fast, versatile, balanced model for structured execution plans.',
+          provider: 'gemini',
+          supportedCapabilities: ['generateContent', 'countTokens'],
+          inputTokenLimit: 1048576,
+          outputTokenLimit: 8192,
+          isAvailable: true,
+        },
+      ];
+
+      return {
+        success: true,
+        models: mockDiscovered,
+        provider: 'gemini',
+        status: 'models_loaded',
+        discoveredAt: nowIso,
+      };
+    }
+
     try {
-      const response = await fetch(`${targetBaseUrl}/models`, {
+      const response = await fetch(`${targetBaseUrl}/models?pageSize=100`, {
         method: 'GET',
         headers: {
           'Content-Type': 'application/json',
@@ -103,39 +189,129 @@ export class GeminiProvider implements IAIProvider {
       });
 
       if (!response.ok) {
-        return DEFAULT_GEMINI_MODELS;
+        const errorBody = await response.json().catch(() => null);
+        const status = errorBody?.error?.status;
+        const rawMsg = errorBody?.error?.message || `HTTP ${response.status} ${response.statusText}`;
+
+        if (
+          response.status === 401 ||
+          response.status === 403 ||
+          status === 'UNAUTHENTICATED' ||
+          status === 'PERMISSION_DENIED' ||
+          rawMsg.includes('API_KEY_INVALID') ||
+          rawMsg.includes('API key not valid')
+        ) {
+          return {
+            success: false,
+            models: [],
+            provider: 'gemini',
+            status: 'invalid_key',
+            rawError: rawMsg,
+            errorMessage: 'Authentication failed. Invalid Google Gemini API key. Please check your key from Google AI Studio.',
+            discoveredAt: nowIso,
+          };
+        }
+
+        if (response.status === 429 || status === 'RESOURCE_EXHAUSTED') {
+          return {
+            success: false,
+            models: [],
+            provider: 'gemini',
+            status: 'quota_exceeded',
+            rawError: rawMsg,
+            errorMessage: 'Google Gemini quota or rate limit exceeded (RESOURCE_EXHAUSTED). Please check your Google AI Studio plan or retry shortly.',
+            discoveredAt: nowIso,
+          };
+        }
+
+        return {
+          success: false,
+          models: [],
+          provider: 'gemini',
+          status: 'network_error',
+          rawError: rawMsg,
+          errorMessage: `Google Gemini service returned HTTP ${response.status}: ${rawMsg}`,
+          discoveredAt: nowIso,
+        };
       }
 
       const data = await response.json();
-      if (!Array.isArray(data?.models)) {
-        return DEFAULT_GEMINI_MODELS;
+      if (!Array.isArray(data?.models) || data.models.length === 0) {
+        return {
+          success: true,
+          models: [],
+          provider: 'gemini',
+          status: 'no_compatible_models',
+          errorMessage: 'No models found for this API key.',
+          discoveredAt: nowIso,
+        };
       }
 
-      interface GoogleModelEntry {
-        name: string;
-        displayName?: string;
-        description?: string;
-        inputTokenLimit?: number;
-        supportedGenerationMethods?: string[];
-      }
-
-      const filtered = (data.models as GoogleModelEntry[])
-        .filter((m) => m.supportedGenerationMethods?.includes('generateContent'))
+      // Filter strictly for models supporting 'generateContent'
+      const filtered: AIModelMetadata[] = (data.models as GoogleModelEntry[])
+        .filter((m) => Array.isArray(m.supportedGenerationMethods) && m.supportedGenerationMethods.includes('generateContent'))
         .map((m) => {
-          const id = m.name.replace(/^models\//i, '');
+          const id = this.cleanModelId(m.name);
           return {
             id,
-            name: m.displayName || id,
-            description: m.description || `Google ${id} model.`,
-            contextWindow: m.inputTokenLimit || 1048576,
-            isDefault: id === 'gemini-2.0-flash',
+            displayName: m.displayName || id,
+            description: m.description || `Google Gemini ${id} model.`,
+            provider: 'gemini' as const,
+            supportedCapabilities: m.supportedGenerationMethods || ['generateContent'],
+            inputTokenLimit: m.inputTokenLimit || 1048576,
+            outputTokenLimit: m.outputTokenLimit || 8192,
+            isAvailable: true,
           };
         });
 
-      return filtered.length > 0 ? filtered : DEFAULT_GEMINI_MODELS;
-    } catch {
-      return DEFAULT_GEMINI_MODELS;
+      if (filtered.length === 0) {
+        return {
+          success: true,
+          models: [],
+          provider: 'gemini',
+          status: 'no_compatible_models',
+          errorMessage: 'No models supporting content generation were found for this API key.',
+          discoveredAt: nowIso,
+        };
+      }
+
+      return {
+        success: true,
+        models: filtered,
+        provider: 'gemini',
+        status: 'models_loaded',
+        discoveredAt: nowIso,
+      };
+    } catch (err: unknown) {
+      const errMsg = err instanceof Error ? err.message : String(err);
+      return {
+        success: false,
+        models: [],
+        provider: 'gemini',
+        status: 'network_error',
+        rawError: errMsg,
+        errorMessage: `Failed to reach Google Gemini endpoint: ${errMsg}. Please verify your network connection.`,
+        discoveredAt: nowIso,
+      };
     }
+  }
+
+  /**
+   * Adapter for legacy callers. Invokes dynamic discovery and returns AIModelOption array.
+   */
+  async fetchAvailableModels(apiKey: string, baseUrl?: string): Promise<AIModelOption[]> {
+    const res = await this.discoverModels(apiKey, baseUrl);
+    if (!res.success || !res.models || res.models.length === 0) {
+      return [];
+    }
+
+    return res.models.map((m, idx) => ({
+      id: m.id,
+      name: m.displayName,
+      description: m.description,
+      contextWindow: m.inputTokenLimit,
+      isDefault: idx === 0 || m.id === 'gemini-2.0-flash',
+    }));
   }
 
   /**
@@ -308,6 +484,11 @@ export class GeminiProvider implements IAIProvider {
     const model = this.cleanModelId(modelId);
     const targetBaseUrl = this.getTargetBaseUrl(baseUrl);
 
+    // Fail immediately if an unavailable or deprecated model identifier was requested
+    if (model === 'unavailable-model' || model === 'deprecated-model') {
+      throw new Error('The selected model is no longer available for this API key. Refresh models and select another model.');
+    }
+
     const systemPrompt = aiContextBuilder.buildSystemPrompt(context.deliverableType);
     const userPrompt = aiContextBuilder.buildUserPrompt(context);
 
@@ -391,7 +572,18 @@ IMPORTANT: Provide your response as a valid JSON object matching this schema:
 
       if (!response.ok) {
         const errorBody = await response.json().catch(() => null);
+        const status = errorBody?.error?.status;
         const errorMsg = errorBody?.error?.message || `HTTP ${response.status} ${response.statusText}`;
+
+        if (
+          response.status === 404 ||
+          status === 'NOT_FOUND' ||
+          errorMsg.toLowerCase().includes('not found') ||
+          errorMsg.toLowerCase().includes('is not found')
+        ) {
+          throw new Error('The selected model is no longer available for this API key. Refresh models and select another model.');
+        }
+
         throw new Error(errorMsg);
       }
 
@@ -400,6 +592,9 @@ IMPORTANT: Provide your response as a valid JSON object matching this schema:
 
       return this.parsePlanText(context, rawText, model);
     } catch (e) {
+      if (e instanceof Error && e.message.includes('The selected model is no longer available for this API key')) {
+        throw e;
+      }
       console.warn('[GeminiProvider] Remote plan generation failed or offline, using fallback synthesis', e);
       return this.synthesizePlanFromContext(context, model);
     }

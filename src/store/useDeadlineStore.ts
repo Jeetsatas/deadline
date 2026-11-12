@@ -12,10 +12,14 @@ import {
   AIProviderConfig,
   AIConnectionTestResult,
   AIExecutionPlan,
+  AIModelMetadata,
+  ModelDiscoveryResult,
+  ModelDiscoveryStatus,
 } from '@/types';
 import { storageService } from '@/services/storage';
 import { executionEngine } from '@/core/execution';
 import { aiExecutionService } from '@/core/ai/AIExecutionService';
+import { modelDiscoveryService } from '@/core/ai/ModelDiscoveryService';
 import { credentialStorage } from '@/core/security/SessionMemoryCredentialStore';
 import { maskApiKey } from '@/core/security/ICredentialStorage';
 import { isDueToday, isDueTomorrow, createIsoFromLocal } from '@/lib/utils';
@@ -48,6 +52,9 @@ interface DeadlineStoreState {
 
   // AI Integration State (Session & Metadata)
   configuredProviders: Record<string, AIProviderConfig>;
+  discoveredModels: Record<string, AIModelMetadata[]>;
+  modelDiscoveryStatus: Record<string, { status: ModelDiscoveryStatus; error?: string; discoveredAt?: string }>;
+  isDiscoveringModels: Record<string, boolean>;
   activeExecutionPlans: Record<string, AIExecutionPlan>;
   isTestingProvider: boolean;
   isGeneratingPlan: boolean;
@@ -70,6 +77,7 @@ interface DeadlineStoreState {
   saveProviderConfig: (config: Omit<AIProviderConfig, 'createdAt' | 'updatedAt'>, apiKey?: string) => Promise<void>;
   removeProviderConfig: (providerId: AIProviderId) => Promise<void>;
   testProviderConnection: (providerId: AIProviderId, apiKey?: string, baseUrl?: string, modelId?: string) => Promise<AIConnectionTestResult>;
+  discoverProviderModels: (providerId: AIProviderId, apiKey?: string, baseUrl?: string) => Promise<ModelDiscoveryResult>;
   setProviderApiKey: (providerId: AIProviderId, apiKey: string) => Promise<void>;
   getMaskedApiKey: (providerId: AIProviderId) => Promise<string>;
   hasProviderApiKey: (providerId: AIProviderId) => Promise<boolean>;
@@ -128,6 +136,9 @@ export const useDeadlineStore = create<DeadlineStoreState>((set, get) => ({
   error: null,
 
   configuredProviders: {},
+  discoveredModels: {},
+  modelDiscoveryStatus: {},
+  isDiscoveringModels: {},
   activeExecutionPlans: {},
   isTestingProvider: false,
   isGeneratingPlan: false,
@@ -227,11 +238,22 @@ export const useDeadlineStore = create<DeadlineStoreState>((set, get) => ({
         // Ignore JSON error
       }
 
+      let parsedDiscoveredModels: Record<string, AIModelMetadata[]> = {};
+      try {
+        const rawModels = localStorage.getItem('deadline_app_discovered_models_v1');
+        if (rawModels) {
+          parsedDiscoveredModels = JSON.parse(rawModels);
+        }
+      } catch {
+        // Ignore JSON error
+      }
+
       set({
         deadlines,
         activities,
         user,
         configuredProviders: parsedProviders,
+        discoveredModels: parsedDiscoveredModels,
         isLoading: false,
       });
     } catch (e) {
@@ -764,6 +786,107 @@ export const useDeadlineStore = create<DeadlineStoreState>((set, get) => ({
     }
   },
 
+  discoverProviderModels: async (providerId, apiKey, baseUrl) => {
+    set((s) => ({
+      isDiscoveringModels: { ...s.isDiscoveringModels, [providerId]: true },
+    }));
+
+    try {
+      let keyToUse = apiKey;
+      if (!keyToUse) {
+        const stored = await credentialStorage.getSecret(`ai_key_${providerId}`);
+        if (stored) keyToUse = stored;
+      }
+
+      const res = await modelDiscoveryService.discoverModels(
+        providerId,
+        keyToUse || '',
+        baseUrl
+      );
+
+      set((s) => {
+        const newDiscovered = { ...s.discoveredModels };
+        if (res.success && res.models.length > 0) {
+          newDiscovered[providerId] = res.models;
+        }
+
+        const newStatuses = {
+          ...s.modelDiscoveryStatus,
+          [providerId]: {
+            status: res.status,
+            error: res.errorMessage || res.rawError,
+            discoveredAt: res.discoveredAt,
+          },
+        };
+
+        let updatedConfigs = s.configuredProviders;
+        const currentCfg = s.configuredProviders[providerId];
+        if (currentCfg && res.models.length > 0) {
+          const modelExists = res.models.some(
+            (m) => m.id.toLowerCase() === (currentCfg.selectedModelId || '').toLowerCase()
+          );
+          if (!modelExists || !currentCfg.selectedModelId) {
+            const defaultModel =
+              res.models.find((m) => m.id.includes('2.0-flash')) || res.models[0];
+            updatedConfigs = {
+              ...s.configuredProviders,
+              [providerId]: {
+                ...currentCfg,
+                selectedModelId: defaultModel.id,
+                updatedAt: new Date().toISOString(),
+              },
+            };
+          }
+        }
+
+        return {
+          discoveredModels: newDiscovered,
+          modelDiscoveryStatus: newStatuses,
+          configuredProviders: updatedConfigs,
+          isDiscoveringModels: { ...s.isDiscoveringModels, [providerId]: false },
+        };
+      });
+
+      if (res.success && res.models.length > 0) {
+        try {
+          const currentMap = get().discoveredModels;
+          localStorage.setItem(
+            'deadline_app_discovered_models_v1',
+            JSON.stringify(currentMap)
+          );
+        } catch {
+          // Ignore
+        }
+      }
+
+      return res;
+    } catch (err: unknown) {
+      const errMsg = err instanceof Error ? err.message : String(err);
+      const failResult: ModelDiscoveryResult = {
+        success: false,
+        models: [],
+        provider: providerId,
+        discoveredAt: new Date().toISOString(),
+        status: 'network_error',
+        errorMessage: errMsg,
+      };
+
+      set((s) => ({
+        modelDiscoveryStatus: {
+          ...s.modelDiscoveryStatus,
+          [providerId]: {
+            status: 'network_error',
+            error: errMsg,
+            discoveredAt: failResult.discoveredAt,
+          },
+        },
+        isDiscoveringModels: { ...s.isDiscoveringModels, [providerId]: false },
+      }));
+
+      return failResult;
+    }
+  },
+
   setProviderApiKey: async (providerId, apiKey) => {
     await credentialStorage.saveSecret(`ai_key_${providerId}`, apiKey);
   },
@@ -794,6 +917,26 @@ export const useDeadlineStore = create<DeadlineStoreState>((set, get) => ({
         }
       }
       const config = providers[effectiveProviderId];
+
+      // 1. Confirm key in memory
+      const hasKey = await credentialStorage.hasSecret(`ai_key_${effectiveProviderId}`);
+      if (!hasKey) {
+        throw new Error(
+          `No API key found in active memory for ${effectiveProviderId}. Please enter your API key in Settings > AI Integrations.`
+        );
+      }
+
+      // 2. Confirm selected model exists in discovered list if discovered list is available
+      const discoveredForProvider = get().discoveredModels[effectiveProviderId];
+      const selectedModel = config?.selectedModelId;
+      if (discoveredForProvider && discoveredForProvider.length > 0 && selectedModel) {
+        const exists = discoveredForProvider.some(
+          (m) => m.id.toLowerCase() === selectedModel.toLowerCase() && m.isAvailable
+        );
+        if (!exists) {
+          throw new Error('The selected model is no longer available for this API key. Refresh models and select another model.');
+        }
+      }
 
       const plan = await aiExecutionService.generateExecutionPlan(
         target,

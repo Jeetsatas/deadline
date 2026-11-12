@@ -4,6 +4,8 @@ import {
   AIConnectionTestResult,
   AIContext,
   AIExecutionPlan,
+  AIModelMetadata,
+  ModelDiscoveryResult,
 } from '../types';
 import { aiContextBuilder } from '../AIContextBuilder';
 import { validateEndpointUrl } from '@/core/security/ICredentialStorage';
@@ -42,6 +44,61 @@ export class AnthropicProvider implements IAIProvider {
           contextWindow: 200000,
         },
       ],
+    };
+  }
+
+  async discoverModels(apiKey: string, _baseUrl?: string): Promise<ModelDiscoveryResult> {
+    const nowIso = new Date().toISOString();
+    if (!apiKey || !apiKey.trim()) {
+      return {
+        success: false,
+        models: [],
+        provider: 'anthropic',
+        status: 'no_key',
+        discoveredAt: nowIso,
+        errorMessage: 'Anthropic API key is required to discover available models.',
+      };
+    }
+
+    const models: AIModelMetadata[] = [
+      {
+        id: 'claude-3-7-sonnet-latest',
+        displayName: 'Claude 3.7 Sonnet',
+        description: 'Most intelligent model for complex multi-step execution and planning.',
+        provider: 'anthropic',
+        supportedCapabilities: ['generateContent', 'messages'],
+        inputTokenLimit: 200000,
+        outputTokenLimit: 8192,
+        isAvailable: true,
+      },
+      {
+        id: 'claude-3-5-sonnet-latest',
+        displayName: 'Claude 3.5 Sonnet',
+        description: 'High intelligence & fast throughput for structured project plans.',
+        provider: 'anthropic',
+        supportedCapabilities: ['generateContent', 'messages'],
+        inputTokenLimit: 200000,
+        outputTokenLimit: 8192,
+        isAvailable: true,
+      },
+      {
+        id: 'claude-3-5-haiku-latest',
+        displayName: 'Claude 3.5 Haiku',
+        description: 'Ultra-fast and cost-effective for quick breakdowns and rapid checks.',
+        provider: 'anthropic',
+        supportedCapabilities: ['generateContent', 'messages'],
+        inputTokenLimit: 200000,
+        outputTokenLimit: 8192,
+        isAvailable: true,
+      },
+    ];
+
+    return {
+      success: true,
+      models,
+      provider: 'anthropic',
+      status: 'models_loaded',
+      discoveredAt: nowIso,
     };
   }
 
