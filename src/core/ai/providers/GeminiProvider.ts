@@ -485,7 +485,7 @@ export class GeminiProvider implements IAIProvider {
     const targetBaseUrl = this.getTargetBaseUrl(baseUrl);
 
     // Fail immediately if an unavailable or deprecated model identifier was requested
-    if (model === 'unavailable-model' || model === 'deprecated-model') {
+    if (model.includes('unavailable') || model.includes('deprecated')) {
       throw new Error('The selected model is no longer available for this API key. Refresh models and select another model.');
     }
 
@@ -533,6 +533,7 @@ IMPORTANT: Provide your response as a valid JSON object matching this schema:
       },
     };
 
+    const startTime = performance.now();
     try {
       let response = await fetch(`${targetBaseUrl}/models/${model}:generateContent`, {
         method: 'POST',
@@ -570,6 +571,8 @@ IMPORTANT: Provide your response as a valid JSON object matching this schema:
         });
       }
 
+      const latencyMs = Math.round(performance.now() - startTime);
+
       if (!response.ok) {
         const errorBody = await response.json().catch(() => null);
         const status = errorBody?.error?.status;
@@ -584,19 +587,39 @@ IMPORTANT: Provide your response as a valid JSON object matching this schema:
           throw new Error('The selected model is no longer available for this API key. Refresh models and select another model.');
         }
 
-        throw new Error(errorMsg);
+        if (response.status === 401 || status === 'UNAUTHENTICATED' || errorMsg.includes('API_KEY_INVALID')) {
+          throw new Error('Authentication failed. Invalid Google Gemini API key. Please check your key from Google AI Studio.');
+        }
+
+        if (response.status === 429 || status === 'RESOURCE_EXHAUSTED') {
+          throw new Error('Google Gemini quota or rate limit exceeded (RESOURCE_EXHAUSTED). Please check your Google AI Studio plan or retry shortly.');
+        }
+
+        if (response.status === 403 || status === 'PERMISSION_DENIED') {
+          throw new Error(`Access denied for model "${model}". The API key lacks permission or the Generative Language API is disabled.`);
+        }
+
+        throw new Error(`Google Gemini error: ${errorMsg}`);
       }
 
       const data = await response.json();
       const rawText = data?.candidates?.[0]?.content?.parts?.[0]?.text || '';
 
-      return this.parsePlanText(context, rawText, model);
-    } catch (e) {
-      if (e instanceof Error && e.message.includes('The selected model is no longer available for this API key')) {
-        throw e;
+      if (!rawText.trim()) {
+        const blockReason = data?.promptFeedback?.blockReason || data?.candidates?.[0]?.finishReason;
+        throw new Error(`Google Gemini returned an empty response. Finish/Block Reason: ${blockReason || 'Unknown'}`);
       }
-      console.warn('[GeminiProvider] Remote plan generation failed or offline, using fallback synthesis', e);
-      return this.synthesizePlanFromContext(context, model);
+
+      const plan = this.parsePlanText(context, rawText, model);
+      return {
+        ...plan,
+        latencyMs,
+      };
+    } catch (e) {
+      if (key.startsWith('mock_')) {
+        return this.synthesizePlanFromContext(context, model);
+      }
+      throw e;
     }
   }
 
@@ -604,15 +627,21 @@ IMPORTANT: Provide your response as a valid JSON object matching this schema:
    * Parses JSON text from Gemini response into validated AIExecutionPlan.
    */
   private parsePlanText(context: AIContext, text: string, model: string): AIExecutionPlan {
-    try {
-      // Strip markdown code fences if model wrapped in ```json ... ```
-      const cleaned = text
-        .trim()
-        .replace(/^```json\s*/i, '')
-        .replace(/^```\s*/i, '')
-        .replace(/\s*```$/i, '')
-        .trim();
+    let cleaned = text.trim();
+    // Strip markdown code fences if wrapped in ```json ... ```
+    cleaned = cleaned
+      .replace(/^```json\s*/i, '')
+      .replace(/^```\s*/i, '')
+      .replace(/\s*```$/i, '')
+      .trim();
 
+    // Extract outermost JSON block if extra text exists
+    const jsonMatch = cleaned.match(/\{[\s\S]*\}/);
+    if (jsonMatch) {
+      cleaned = jsonMatch[0];
+    }
+
+    try {
       const parsed = JSON.parse(cleaned);
 
       if (parsed && typeof parsed === 'object') {
@@ -632,10 +661,10 @@ IMPORTANT: Provide your response as a valid JSON object matching this schema:
         return {
           deadlineId: context.deadlineId,
           taskUnderstanding:
-            String(parsed.taskUnderstanding) ||
+            String(parsed.taskUnderstanding || '') ||
             `Target Output: ${context.expectedOutput} (Due: ${context.deadlineDate} ${context.deadlineTime})`,
           suggestedApproach:
-            String(parsed.suggestedApproach) ||
+            String(parsed.suggestedApproach || '') ||
             `Execution Approach: ${context.executionApproach || 'prototype_first'}`,
           suggestedMilestones:
             suggestedMilestones.length > 0
@@ -646,22 +675,26 @@ IMPORTANT: Provide your response as a valid JSON object matching this schema:
               ? requiredResources
               : ['Standard development / authoring environment'],
           firstActionableStep:
-            String(parsed.firstActionableStep) ||
+            String(parsed.firstActionableStep || '') ||
             'Review target output requirements and initiate core deliverable structure.',
           deliverableSpecificGuidance:
-            String(parsed.deliverableSpecificGuidance) ||
+            String(parsed.deliverableSpecificGuidance || '') ||
             `Tailored for ${context.deliverableType}: focus on output completeness over task volume.`,
           generatedAt: new Date().toISOString(),
           providerId: 'gemini',
           modelId: model,
-          rawPromptSummary: text.slice(0, 500),
+          rawPromptSummary: text.slice(0, 1000),
         };
       }
-    } catch {
-      // JSON parse failed; fall back gracefully
+    } catch (parseErr) {
+      const err = new Error(
+        `Failed to parse structured JSON from Gemini response: ${(parseErr as Error).message}. Raw response: ${text.slice(0, 300)}`
+      );
+      (err as unknown as { cause: unknown }).cause = parseErr;
+      throw err;
     }
 
-    return this.synthesizePlanFromContext(context, model);
+    throw new Error(`Invalid JSON format returned by Gemini: ${text.slice(0, 300)}`);
   }
 
   /**

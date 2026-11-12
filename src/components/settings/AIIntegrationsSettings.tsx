@@ -11,6 +11,7 @@ import {
 import { credentialStorage } from '@/core/security/SessionMemoryCredentialStore';
 import { Button } from '@/components/ui/Button';
 import { Badge } from '@/components/ui/Badge';
+import { AIExecutionPlanLab } from './AIExecutionPlanLab';
 import {
   Sparkles,
   ShieldAlert,
@@ -623,6 +624,11 @@ export const AIIntegrationsSettings: React.FC = () => {
             </div>
           );
         })}
+      </div>
+
+      {/* Development-Only AI Execution Plan Testing Lab */}
+      <div className="pt-4">
+        <AIExecutionPlanLab />
       </div>
     </div>
   );

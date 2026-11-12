@@ -148,6 +148,7 @@ export interface AIExecutionPlan {
   providerId: AIProviderId;
   modelId: string;
   rawPromptSummary?: string;
+  latencyMs?: number;
 }
 
 /**
