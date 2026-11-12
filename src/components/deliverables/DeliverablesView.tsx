@@ -50,8 +50,9 @@ export const DeliverablesView: React.FC = () => {
         {/* Tab switcher */}
         <div className="flex rounded-lg border border-border p-1 bg-secondary/50 text-xs">
           <button
+            type="button"
             onClick={() => setTab('submitted')}
-            className={`px-3 py-1.5 rounded-md font-medium transition-colors ${
+            className={`px-3 py-1.5 rounded-md font-medium transition-colors cursor-pointer ${
               tab === 'submitted'
                 ? 'bg-card text-foreground shadow-sm font-semibold'
                 : 'text-muted-foreground hover:text-foreground'
@@ -60,8 +61,9 @@ export const DeliverablesView: React.FC = () => {
             Delivered Outputs ({submittedDeadlines.length})
           </button>
           <button
+            type="button"
             onClick={() => setTab('pending')}
-            className={`px-3 py-1.5 rounded-md font-medium transition-colors ${
+            className={`px-3 py-1.5 rounded-md font-medium transition-colors cursor-pointer ${
               tab === 'pending'
                 ? 'bg-card text-foreground shadow-sm font-semibold'
                 : 'text-muted-foreground hover:text-foreground'

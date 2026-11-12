@@ -117,8 +117,9 @@ export const Sidebar: React.FC<SidebarProps> = ({ isCollapsed, onToggleCollapse 
           )}
 
           <button
+            type="button"
             onClick={onToggleCollapse}
-            className={`p-1.5 rounded-md text-muted-foreground hover:bg-secondary hover:text-foreground transition-colors ${
+            className={`p-1.5 rounded-md text-muted-foreground hover:bg-secondary hover:text-foreground transition-colors cursor-pointer ${
               isCollapsed ? 'hidden' : 'block'
             }`}
             aria-label="Toggle sidebar collapse"
@@ -151,9 +152,10 @@ export const Sidebar: React.FC<SidebarProps> = ({ isCollapsed, onToggleCollapse 
             return (
               <button
                 key={item.id}
+                type="button"
                 onClick={() => setActiveTab(item.id)}
                 title={isCollapsed ? item.label : undefined}
-                className={`w-full flex items-center gap-3 px-2.5 py-2 rounded-lg text-xs font-medium transition-all group ${
+                className={`w-full flex items-center gap-3 px-2.5 py-2 rounded-lg text-xs font-medium transition-all group cursor-pointer ${
                   isActive
                     ? 'bg-secondary text-foreground font-semibold shadow-xs border border-border/60'
                     : 'text-muted-foreground hover:bg-secondary/60 hover:text-foreground border border-transparent'
@@ -209,8 +211,9 @@ export const Sidebar: React.FC<SidebarProps> = ({ isCollapsed, onToggleCollapse 
 
             {/* Quick Theme Toggle */}
             <button
+              type="button"
               onClick={toggleTheme}
-              className="p-1.5 rounded text-muted-foreground hover:bg-secondary hover:text-foreground transition-colors shrink-0"
+              className="p-1.5 rounded text-muted-foreground hover:bg-secondary hover:text-foreground transition-colors shrink-0 cursor-pointer"
               title={`Switch to ${currentTheme === 'dark' ? 'light' : 'dark'} mode`}
             >
               {currentTheme === 'dark' ? (
@@ -229,8 +232,9 @@ export const Sidebar: React.FC<SidebarProps> = ({ isCollapsed, onToggleCollapse 
               title={user?.name || 'Jeet Satasiya'}
             />
             <button
+              type="button"
               onClick={toggleTheme}
-              className="p-1.5 rounded text-muted-foreground hover:bg-secondary hover:text-foreground transition-colors"
+              className="p-1.5 rounded text-muted-foreground hover:bg-secondary hover:text-foreground transition-colors cursor-pointer"
               title="Toggle Theme"
             >
               {currentTheme === 'dark' ? (
@@ -240,8 +244,9 @@ export const Sidebar: React.FC<SidebarProps> = ({ isCollapsed, onToggleCollapse 
               )}
             </button>
             <button
+              type="button"
               onClick={onToggleCollapse}
-              className="p-1.5 rounded text-muted-foreground hover:bg-secondary hover:text-foreground transition-colors"
+              className="p-1.5 rounded text-muted-foreground hover:bg-secondary hover:text-foreground transition-colors cursor-pointer"
               title="Expand Sidebar"
             >
               <ChevronRight className="h-4 w-4" />

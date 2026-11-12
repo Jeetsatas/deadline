@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { useDeadlineStore } from '@/store/useDeadlineStore';
 import { aiProviderRegistry } from '@/core/ai/AIProviderRegistry';
 import {
@@ -41,7 +41,7 @@ export const AIIntegrationsSettings: React.FC = () => {
     getMaskedApiKey,
   } = useDeadlineStore();
 
-  const providers = aiProviderRegistry.listProviders();
+  const providers = useMemo(() => aiProviderRegistry.listProviders(), []);
 
   // Local editing states per provider
   const [apiKeys, setApiKeys] = useState<Record<string, string>>({});
@@ -53,7 +53,7 @@ export const AIIntegrationsSettings: React.FC = () => {
   const [testingId, setTestingId] = useState<string | null>(null);
   const [saveSuccess, setSaveSuccess] = useState<Record<string, boolean>>({});
 
-  // Helper to trigger discovery
+  // Helper to trigger discovery on explicit user action
   const runModelDiscovery = useCallback(
     async (providerId: AIProviderId, key?: string) => {
       let keyToUse = key?.trim();
@@ -63,53 +63,72 @@ export const AIIntegrationsSettings: React.FC = () => {
       }
       if (!keyToUse) return;
 
-      const baseUrl = baseUrls[providerId];
+      const baseUrl = baseUrls[providerId] || configuredProviders[providerId]?.baseUrl;
       await discoverProviderModels(providerId, keyToUse, baseUrl);
     },
-    [baseUrls, discoverProviderModels]
+    [baseUrls, configuredProviders, discoverProviderModels]
   );
 
-  // Load existing configs into local form states & initial discovery
+  // Load existing masked keys on mount
   useEffect(() => {
-    const loadState = async () => {
+    let isMounted = true;
+    const loadKeys = async () => {
       const masks: Record<string, string> = {};
       for (const p of providers) {
         const masked = await getMaskedApiKey(p.id);
         if (masked) masks[p.id] = masked;
       }
-      setMaskedKeys(masks);
-
-      const initialModels: Record<string, string> = {};
-      const initialUrls: Record<string, string> = {};
-
-      for (const p of providers) {
-        const existing = configuredProviders[p.id];
-        const knownDiscovered = discoveredModels[p.id] || [];
-
-        // Fallback for providers that still use static availableModels
-        const staticFallback = p.getMetadata().availableModels;
-        const defaultModelId =
-          knownDiscovered.find((m) => m.id.includes('2.0-flash'))?.id ||
-          knownDiscovered[0]?.id ||
-          staticFallback.find((m) => m.isDefault)?.id ||
-          staticFallback[0]?.id ||
-          '';
-
-        initialModels[p.id] = existing?.selectedModelId || defaultModelId;
-        initialUrls[p.id] = existing?.baseUrl || p.getMetadata().defaultBaseUrl || '';
-
-        // Auto-discover if we have a key in memory but no models discovered yet
-        if (masks[p.id] && (!knownDiscovered || knownDiscovered.length === 0)) {
-          runModelDiscovery(p.id);
-        }
+      if (isMounted) {
+        setMaskedKeys(masks);
       }
-
-      setSelectedModels((prev) => ({ ...initialModels, ...prev }));
-      setBaseUrls((prev) => ({ ...initialUrls, ...prev }));
     };
 
-    loadState();
-  }, [configuredProviders, getMaskedApiKey, providers, discoveredModels, runModelDiscovery]);
+    loadKeys();
+    return () => {
+      isMounted = false;
+    };
+  }, [getMaskedApiKey, providers]);
+
+  // Synchronize form models and base URLs from configuredProviders / discoveredModels safely
+  useEffect(() => {
+    setSelectedModels((prev) => {
+      let changed = false;
+      const next = { ...prev };
+      for (const p of providers) {
+        if (!next[p.id]) {
+          const config = configuredProviders[p.id];
+          const discovered = discoveredModels[p.id] || [];
+          const staticFallback = p.getMetadata().availableModels;
+          const defaultModelId =
+            config?.selectedModelId ||
+            discovered.find((m) => m.id.includes('2.0-flash'))?.id ||
+            discovered[0]?.id ||
+            staticFallback.find((m) => m.isDefault)?.id ||
+            staticFallback[0]?.id ||
+            '';
+
+          if (defaultModelId) {
+            next[p.id] = defaultModelId;
+            changed = true;
+          }
+        }
+      }
+      return changed ? next : prev;
+    });
+
+    setBaseUrls((prev) => {
+      let changed = false;
+      const next = { ...prev };
+      for (const p of providers) {
+        if (next[p.id] === undefined) {
+          const config = configuredProviders[p.id];
+          next[p.id] = config?.baseUrl || p.getMetadata().defaultBaseUrl || '';
+          changed = true;
+        }
+      }
+      return changed ? next : prev;
+    });
+  }, [configuredProviders, discoveredModels, providers]);
 
   const handleTest = async (providerId: AIProviderId) => {
     setTestingId(providerId);

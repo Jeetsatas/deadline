@@ -188,8 +188,9 @@ export const Dashboard: React.FC = () => {
             </h2>
           </div>
           <button
+            type="button"
             onClick={() => setActiveTab('my-deadlines')}
-            className="text-xs text-muted-foreground hover:text-primary transition-colors flex items-center gap-1"
+            className="text-xs text-muted-foreground hover:text-primary transition-colors flex items-center gap-1 cursor-pointer"
           >
             <span>View all ({deadlines.length})</span>
             <ArrowRight className="h-3.5 w-3.5" />
@@ -278,8 +279,9 @@ export const Dashboard: React.FC = () => {
 
             <div className="space-y-2">
               <button
+                type="button"
                 onClick={() => openCreateModal()}
-                className="w-full flex items-center justify-between p-2.5 rounded-lg bg-secondary/50 hover:bg-secondary border border-border text-xs font-medium text-foreground transition-colors"
+                className="w-full flex items-center justify-between p-2.5 rounded-lg bg-secondary/50 hover:bg-secondary border border-border text-xs font-medium text-foreground transition-colors cursor-pointer"
               >
                 <span className="flex items-center gap-2">
                   <Plus className="h-4 w-4 text-primary" />
@@ -289,8 +291,9 @@ export const Dashboard: React.FC = () => {
               </button>
 
               <button
+                type="button"
                 onClick={() => setActiveTab('in-progress')}
-                className="w-full flex items-center justify-between p-2.5 rounded-lg bg-secondary/50 hover:bg-secondary border border-border text-xs font-medium text-foreground transition-colors"
+                className="w-full flex items-center justify-between p-2.5 rounded-lg bg-secondary/50 hover:bg-secondary border border-border text-xs font-medium text-foreground transition-colors cursor-pointer"
               >
                 <span className="flex items-center gap-2">
                   <PlayCircle className="h-4 w-4 text-amber-500" />
@@ -300,8 +303,9 @@ export const Dashboard: React.FC = () => {
               </button>
 
               <button
+                type="button"
                 onClick={() => setActiveTab('deliverables')}
-                className="w-full flex items-center justify-between p-2.5 rounded-lg bg-secondary/50 hover:bg-secondary border border-border text-xs font-medium text-foreground transition-colors"
+                className="w-full flex items-center justify-between p-2.5 rounded-lg bg-secondary/50 hover:bg-secondary border border-border text-xs font-medium text-foreground transition-colors cursor-pointer"
               >
                 <span className="flex items-center gap-2">
                   <CheckCircle2 className="h-4 w-4 text-emerald-500" />

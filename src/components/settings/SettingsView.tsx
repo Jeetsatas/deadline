@@ -84,7 +84,7 @@ export const SettingsView: React.FC = () => {
           <button
             type="button"
             onClick={() => setActiveSettingsTab('ai_integrations')}
-            className={`flex items-center gap-2 px-3.5 py-1.5 rounded-lg text-xs font-semibold transition-all ${
+            className={`flex items-center gap-2 px-3.5 py-1.5 rounded-lg text-xs font-semibold transition-all cursor-pointer ${
               activeSettingsTab === 'ai_integrations'
                 ? 'bg-primary text-white shadow-sm'
                 : 'bg-secondary/60 text-muted-foreground hover:text-foreground hover:bg-secondary'
@@ -97,7 +97,7 @@ export const SettingsView: React.FC = () => {
           <button
             type="button"
             onClick={() => setActiveSettingsTab('general')}
-            className={`flex items-center gap-2 px-3.5 py-1.5 rounded-lg text-xs font-semibold transition-all ${
+            className={`flex items-center gap-2 px-3.5 py-1.5 rounded-lg text-xs font-semibold transition-all cursor-pointer ${
               activeSettingsTab === 'general'
                 ? 'bg-primary text-white shadow-sm'
                 : 'bg-secondary/60 text-muted-foreground hover:text-foreground hover:bg-secondary'

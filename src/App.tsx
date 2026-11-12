@@ -14,6 +14,7 @@ import { Loader2 } from 'lucide-react';
 export const App: React.FC = () => {
   const {
     activeTab,
+    selectedDeadlineId,
     selectedDeadline,
     selectDeadline,
     loadInitialData,
@@ -72,7 +73,7 @@ export const App: React.FC = () => {
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [openCreateModal]);
 
-  const currentDeadline = selectedDeadline();
+  const currentDeadline = selectedDeadlineId ? selectedDeadline() : null;
 
   return (
     <div className="flex h-screen w-screen overflow-hidden bg-background text-foreground">
