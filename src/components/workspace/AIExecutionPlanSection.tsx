@@ -478,8 +478,14 @@ export const AIExecutionPlanSection: React.FC<AIExecutionPlanSectionProps> = ({ 
             className="cursor-pointer"
           >
             <Sparkles className="h-4 w-4 mr-1.5" />
-            Generate Execution Plan
+            {isGeneratingInitial ? 'Generating Plan...' : 'Generate Execution Plan'}
           </Button>
+
+          {isGeneratingInitial && (
+            <p className="text-[11px] text-muted-foreground animate-pulse">
+              Synthesizing structured roadmap using {initialModelId}...
+            </p>
+          )}
         </div>
       </div>
     );

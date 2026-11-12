@@ -699,7 +699,7 @@ export class GeminiProvider implements IAIProvider {
         'x-goog-api-key': key,
       },
       body: JSON.stringify(requestBody),
-      signal: AbortSignal.timeout(35000),
+      signal: AbortSignal.timeout(90000),
     });
 
     // If 400 Bad Request: could be unrecognized thinkingConfig, responseSchema, or systemInstruction
@@ -714,7 +714,7 @@ export class GeminiProvider implements IAIProvider {
           method: 'POST',
           headers: { 'Content-Type': 'application/json', 'x-goog-api-key': key },
           body: JSON.stringify(requestBody),
-          signal: AbortSignal.timeout(35000),
+          signal: AbortSignal.timeout(90000),
         });
       }
 
@@ -725,7 +725,7 @@ export class GeminiProvider implements IAIProvider {
           method: 'POST',
           headers: { 'Content-Type': 'application/json', 'x-goog-api-key': key },
           body: JSON.stringify(requestBody),
-          signal: AbortSignal.timeout(35000),
+          signal: AbortSignal.timeout(90000),
         });
       }
 
@@ -749,7 +749,7 @@ export class GeminiProvider implements IAIProvider {
           method: 'POST',
           headers: { 'Content-Type': 'application/json', 'x-goog-api-key': key },
           body: JSON.stringify(fallbackBody),
-          signal: AbortSignal.timeout(35000),
+          signal: AbortSignal.timeout(90000),
         });
       }
     }
@@ -861,7 +861,7 @@ IMPORTANT: Provide your response strictly as a valid JSON object matching this s
 
     // Token limit setup: generous 8192 output tokens to prevent MAX_TOKENS truncation
     const initialOutputTokens = 8192;
-    const isThinkingModel = model.includes('thinking') || model.includes('2.5');
+    const isThinkingModel = model.includes('thinking') || model.includes('2.5') || model.includes('3.5');
     // If thinking model, limit thinking budget to 1024 so thinking cannot consume all output tokens
     const thinkingBudget = isThinkingModel ? 1024 : undefined;
 
@@ -987,6 +987,22 @@ IMPORTANT: Provide your response strictly as a valid JSON object matching this s
     } catch (e) {
       if (key.startsWith('mock_')) {
         return this.synthesizePlanFromContext(context, model);
+      }
+      const errName = e instanceof Error ? e.name : '';
+      const errMsg = e instanceof Error ? e.message : String(e);
+
+      if (
+        errName === 'TimeoutError' ||
+        errMsg.toLowerCase().includes('signal timed out') ||
+        errMsg.toLowerCase().includes('timed out') ||
+        errMsg.toLowerCase().includes('timeout') ||
+        errMsg.toLowerCase().includes('aborted')
+      ) {
+        const timeoutErr = new Error(
+          `Request to Google Gemini (${model}) timed out while generating the execution plan. The model took longer than expected. Please try again or select a fast text model like Gemini 2.0 Flash.`
+        );
+        (timeoutErr as unknown as { cause: unknown }).cause = e;
+        throw timeoutErr;
       }
       throw e;
     }

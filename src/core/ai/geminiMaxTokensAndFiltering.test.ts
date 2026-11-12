@@ -530,6 +530,16 @@ describe('Gemini Text Model Selection & MAX_TOKENS Recovery Suite', () => {
         provider.generatePlan(sampleContext, 'AIzaSyValidKey', undefined, 'gemini-2.0-flash')
       ).rejects.toThrow(/Failed to parse structured JSON/i);
     });
+
+    it('catches and translates AbortSignal.timeout / signal timed out into clear user message', async () => {
+      const timeoutError = new Error('signal timed out');
+      timeoutError.name = 'TimeoutError';
+      globalThis.fetch = vi.fn().mockRejectedValue(timeoutError);
+
+      await expect(
+        provider.generatePlan(sampleContext, 'AIzaSyValidKey', undefined, 'gemini-3.5-flash')
+      ).rejects.toThrow(/Request to Google Gemini \(gemini-3.5-flash\) timed out/i);
+    });
   });
 
   describe('8. Zero API Key Leakage Guarantee', () => {
