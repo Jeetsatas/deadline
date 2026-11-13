@@ -55,6 +55,7 @@ export type NavigationTab =
   | 'prototypes'
   | 'deliverable-vault'
   | 'deliverables'
+  | 'tools'
   | 'analytics'
   | 'settings';
 

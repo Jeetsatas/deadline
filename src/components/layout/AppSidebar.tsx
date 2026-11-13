@@ -7,6 +7,7 @@ import {
   Cpu,
   Box,
   FolderGit2,
+  Wrench,
   BarChart3,
   Settings,
   Plus,
@@ -97,6 +98,13 @@ export const AppSidebar: React.FC<AppSidebarProps> = ({
       label: 'Deliverable Vault',
       icon: FolderGit2,
       badge: deliverablesCount > 0 ? deliverablesCount : undefined,
+    },
+    {
+      id: 'tools',
+      aliasMatch: ['tools'],
+      label: 'Tools',
+      icon: Wrench,
+      badge: '30',
     },
     {
       id: 'analytics',

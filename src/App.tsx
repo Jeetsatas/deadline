@@ -7,6 +7,7 @@ import { DeadlineManager } from '@/components/deadline/DeadlineManager';
 import { ExecutionEngineView } from '@/components/execution/ExecutionEngineView';
 import { PrototypeWorkspaceView } from '@/components/prototype/PrototypeWorkspaceView';
 import { DeliverableVault } from '@/components/deliverables/DeliverableVault';
+import { ToolsHub } from '@/features/tools/components/ToolsHub';
 import { AnalyticsView } from '@/components/analytics/AnalyticsView';
 import { SettingsView } from '@/components/settings/SettingsView';
 import { DeadlineWorkspace } from '@/components/workspace/DeadlineWorkspace';
@@ -65,6 +66,11 @@ export const App: React.FC = () => {
         }
       }
 
+      if (hash.startsWith('tool/')) {
+        setActiveTab('tools');
+        return;
+      }
+
       const hashToTab: Record<string, NavigationTab> = {
         dashboard: 'dashboard',
         overview: 'overview',
@@ -80,6 +86,7 @@ export const App: React.FC = () => {
         'deliverable-vault': 'deliverable-vault',
         vault: 'deliverable-vault',
         deliverables: 'deliverable-vault',
+        tools: 'tools',
         analytics: 'analytics',
         settings: 'settings',
       };
@@ -116,6 +123,7 @@ export const App: React.FC = () => {
         prototypes: 'prototype-workspace',
         'deliverable-vault': 'deliverable-vault',
         deliverables: 'deliverable-vault',
+        tools: 'tools',
         analytics: 'analytics',
         settings: 'settings',
       };
@@ -234,6 +242,8 @@ export const App: React.FC = () => {
               {(activeTab === 'deliverable-vault' || activeTab === 'deliverables') && (
                 <DeliverableVault />
               )}
+
+              {activeTab === 'tools' && <ToolsHub />}
 
               {activeTab === 'analytics' && <AnalyticsView />}
 
