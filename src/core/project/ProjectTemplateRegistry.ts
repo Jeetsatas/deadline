@@ -125,3 +125,4 @@ export class ProjectTemplateRegistry {
 }
 
 export const projectTemplateRegistry = new ProjectTemplateRegistry();
+

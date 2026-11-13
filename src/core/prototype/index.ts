@@ -71,6 +71,7 @@ export interface IPrototypeRegistry {
   enableType(id: string): void;
   disableType(id: string): void;
   hasType(id: string): boolean;
+  initializeDefaults?(): void;
   clear(): void;
 
   // Backward-compatible category APIs
@@ -151,6 +152,55 @@ class DefaultPrototypeRegistry implements IPrototypeRegistry {
     return this.types.has(id);
   }
 
+  initializeDefaults(): void {
+    const defaults: PrototypeTypeDefinition[] = [
+      {
+        id: 'interactive-calc-proto',
+        name: 'Interactive Calculator Blueprint',
+        description: 'Single-page lightweight prototype scaffold for calculator applications with state persistence.',
+        enabled: true,
+        badge: 'Interactive',
+        supportedDeliverables: ['software', 'prototype', 'assignment'],
+        configSchema: [
+          {
+            key: 'engine',
+            label: 'Math Engine',
+            type: 'select',
+            options: [
+              { label: 'Vanilla JS Math', value: 'vanilla' },
+              { label: 'BigNumber precision', value: 'bignumber' },
+            ],
+          },
+        ],
+        metadata: { author: 'Deadline Core', version: '1.0.0' },
+      },
+      {
+        id: 'react-app-proto',
+        name: 'Modern Web Application Scaffold',
+        description: 'Single-Page Application prototype with component state, responsive layouts, and unit tests.',
+        enabled: true,
+        badge: 'Component UI',
+        supportedDeliverables: ['software', 'prototype'],
+        metadata: { author: 'Deadline Core', version: '1.0.0' },
+      },
+      {
+        id: 'slide-deck-proto',
+        name: 'Keynote Slide Deck Scaffold',
+        description: 'Structured visual outline for milestone reviews, stakeholder demonstrations, and defense presentations.',
+        enabled: true,
+        badge: 'Slide Deck',
+        supportedDeliverables: ['presentation', 'assignment'],
+        metadata: { author: 'Deadline Core', version: '1.0.0' },
+      },
+    ];
+
+    for (const def of defaults) {
+      if (!this.types.has(def.id)) {
+        this.registerType(def);
+      }
+    }
+  }
+
   clear(): void {
     this.types.clear();
     this.categories.clear();
@@ -175,4 +225,6 @@ class DefaultPrototypeRegistry implements IPrototypeRegistry {
 }
 
 // Singleton registry instance ready for future extension
-export const prototypeRegistry: IPrototypeRegistry = new DefaultPrototypeRegistry();
+const defaultRegistry = new DefaultPrototypeRegistry();
+defaultRegistry.initializeDefaults();
+export const prototypeRegistry: IPrototypeRegistry = defaultRegistry;

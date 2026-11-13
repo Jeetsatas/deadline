@@ -1,19 +1,22 @@
 import React, { useEffect, useState } from 'react';
-import { useDeadlineStore } from '@/store/useDeadlineStore';
-import { Sidebar } from '@/components/layout/Sidebar';
+import { useDeadlineStore, NavigationTab } from '@/store/useDeadlineStore';
+import { AppSidebar } from '@/components/layout/AppSidebar';
 import { Header } from '@/components/layout/Header';
 import { Dashboard } from '@/components/dashboard/Dashboard';
-import { MyDeadlinesView } from '@/components/deadline/MyDeadlinesView';
-import { DeadlineWorkspace } from '@/components/workspace/DeadlineWorkspace';
-import { DeliverablesView } from '@/components/deliverables/DeliverablesView';
+import { DeadlineManager } from '@/components/deadline/DeadlineManager';
+import { ExecutionEngineView } from '@/components/execution/ExecutionEngineView';
+import { PrototypeWorkspaceView } from '@/components/prototype/PrototypeWorkspaceView';
+import { DeliverableVault } from '@/components/deliverables/DeliverableVault';
 import { AnalyticsView } from '@/components/analytics/AnalyticsView';
 import { SettingsView } from '@/components/settings/SettingsView';
+import { DeadlineWorkspace } from '@/components/workspace/DeadlineWorkspace';
 import { CreateDeadlineModal } from '@/components/deadline/CreateDeadlineModal';
 import { Loader2 } from 'lucide-react';
 
 export const App: React.FC = () => {
   const {
     activeTab,
+    setActiveTab,
     selectedDeadlineId,
     selectedDeadline,
     selectDeadline,
@@ -23,13 +26,105 @@ export const App: React.FC = () => {
     user,
   } = useDeadlineStore();
 
-  const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
+  const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(() => {
+    if (typeof window !== 'undefined') {
+      return localStorage.getItem('deadline_sidebar_collapsed_v1') === 'true';
+    }
+    return false;
+  });
+
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
+
+  // Toggle sidebar collapse with persistence
+  const handleToggleSidebar = () => {
+    setIsSidebarCollapsed((prev) => {
+      const next = !prev;
+      if (typeof window !== 'undefined') {
+        localStorage.setItem('deadline_sidebar_collapsed_v1', String(next));
+      }
+      return next;
+    });
+  };
 
   // Load initial data on mount
   useEffect(() => {
     loadInitialData();
   }, [loadInitialData]);
+
+  // Synchronize URL hash with route state
+  useEffect(() => {
+    const handleHashChange = () => {
+      const hash = window.location.hash.replace(/^#\/?/, '');
+      if (!hash) return;
+
+      if (hash.startsWith('deadline/')) {
+        const id = hash.replace('deadline/', '');
+        if (id) {
+          selectDeadline(id);
+          return;
+        }
+      }
+
+      const hashToTab: Record<string, NavigationTab> = {
+        dashboard: 'dashboard',
+        overview: 'overview',
+        deadlines: 'deadlines',
+        'my-deadlines': 'my-deadlines',
+        upcoming: 'upcoming',
+        'in-progress': 'in-progress',
+        completed: 'completed',
+        'execution-engine': 'execution-engine',
+        execution: 'execution-engine',
+        'prototype-workspace': 'prototype-workspace',
+        prototypes: 'prototype-workspace',
+        'deliverable-vault': 'deliverable-vault',
+        vault: 'deliverable-vault',
+        deliverables: 'deliverable-vault',
+        analytics: 'analytics',
+        settings: 'settings',
+      };
+
+      if (hashToTab[hash]) {
+        setActiveTab(hashToTab[hash]);
+      }
+    };
+
+    handleHashChange();
+    window.addEventListener('hashchange', handleHashChange);
+    return () => window.removeEventListener('hashchange', handleHashChange);
+  }, [selectDeadline, setActiveTab]);
+
+  // Keep URL hash updated on state change
+  useEffect(() => {
+    if (selectedDeadlineId) {
+      const targetHash = `#/deadline/${selectedDeadlineId}`;
+      if (window.location.hash !== targetHash) {
+        window.history.replaceState(null, '', targetHash);
+      }
+    } else {
+      const tabToHash: Record<NavigationTab, string> = {
+        overview: 'dashboard',
+        dashboard: 'dashboard',
+        deadlines: 'deadlines',
+        'my-deadlines': 'deadlines',
+        upcoming: 'deadlines',
+        'in-progress': 'deadlines',
+        completed: 'deadlines',
+        'execution-engine': 'execution-engine',
+        execution: 'execution-engine',
+        'prototype-workspace': 'prototype-workspace',
+        prototypes: 'prototype-workspace',
+        'deliverable-vault': 'deliverable-vault',
+        deliverables: 'deliverable-vault',
+        analytics: 'analytics',
+        settings: 'settings',
+      };
+      const newHash = `#/${tabToHash[activeTab] || 'dashboard'}`;
+      if (window.location.hash !== newHash) {
+        window.history.replaceState(null, '', newHash);
+      }
+    }
+  }, [activeTab, selectedDeadlineId]);
 
   // Synchronize theme on startup
   useEffect(() => {
@@ -51,9 +146,8 @@ export const App: React.FC = () => {
   // Global Keyboard Shortcuts
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      // Ignore if typing inside input or textarea
       const targetTag = (e.target as HTMLElement)?.tagName?.toLowerCase();
-      if (targetTag === 'input' || targetTag === 'textarea') return;
+      if (targetTag === 'input' || targetTag === 'textarea' || targetTag === 'select') return;
 
       // 'N' or Cmd+N for New Deadline
       if (e.key === 'n' || e.key === 'N') {
@@ -77,11 +171,11 @@ export const App: React.FC = () => {
 
   return (
     <div className="flex h-screen w-screen overflow-hidden bg-background text-foreground">
-      {/* Desktop Collapsible Sidebar */}
+      {/* Desktop Persistent Collapsible Sidebar */}
       <div className="hidden lg:flex shrink-0">
-        <Sidebar
+        <AppSidebar
           isCollapsed={isSidebarCollapsed}
-          onToggleCollapse={() => setIsSidebarCollapsed(!isSidebarCollapsed)}
+          onToggleCollapse={handleToggleSidebar}
         />
       </div>
 
@@ -93,7 +187,7 @@ export const App: React.FC = () => {
             onClick={() => setIsMobileMenuOpen(false)}
           />
           <div className="relative z-50 w-64 bg-card h-full shadow-2xl">
-            <Sidebar
+            <AppSidebar
               isCollapsed={false}
               onToggleCollapse={() => setIsMobileMenuOpen(false)}
             />
@@ -120,19 +214,29 @@ export const App: React.FC = () => {
             />
           ) : (
             <>
-              {activeTab === 'overview' && <Dashboard />}
-              {activeTab === 'my-deadlines' && <MyDeadlinesView />}
-              {activeTab === 'upcoming' && (
-                <MyDeadlinesView filterStatus="upcoming" title="Upcoming Deadlines" />
+              {(activeTab === 'overview' || activeTab === 'dashboard') && <Dashboard />}
+
+              {(activeTab === 'deadlines' || activeTab === 'my-deadlines') && (
+                <DeadlineManager initialTab="all" />
               )}
-              {activeTab === 'in-progress' && (
-                <MyDeadlinesView filterStatus="in_progress" title="Active In-Progress Work" />
+              {activeTab === 'upcoming' && <DeadlineManager initialTab="upcoming" />}
+              {activeTab === 'in-progress' && <DeadlineManager initialTab="active" />}
+              {activeTab === 'completed' && <DeadlineManager initialTab="completed" />}
+
+              {(activeTab === 'execution-engine' || activeTab === 'execution') && (
+                <ExecutionEngineView />
               )}
-              {activeTab === 'completed' && (
-                <MyDeadlinesView filterStatus="completed" title="Completed Deliverables" />
+
+              {(activeTab === 'prototype-workspace' || activeTab === 'prototypes') && (
+                <PrototypeWorkspaceView />
               )}
-              {activeTab === 'deliverables' && <DeliverablesView />}
+
+              {(activeTab === 'deliverable-vault' || activeTab === 'deliverables') && (
+                <DeliverableVault />
+              )}
+
               {activeTab === 'analytics' && <AnalyticsView />}
+
               {activeTab === 'settings' && <SettingsView />}
             </>
           )}
@@ -146,4 +250,3 @@ export const App: React.FC = () => {
 };
 
 export default App;
-

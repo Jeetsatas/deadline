@@ -109,3 +109,4 @@ export interface InitializationProgressEvent {
   timestamp: string;
   details?: string;
 }
+

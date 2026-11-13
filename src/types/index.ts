@@ -19,6 +19,40 @@ export type ExecutionApproach = 'output_only' | 'prototype_first' | 'guided_exec
 
 export type SubmissionFormat = 'url' | 'repository' | 'file_ref' | 'preview_embed' | 'document';
 
+export type DeliverableVaultCategory =
+  | 'all'
+  | 'documents'
+  | 'presentations'
+  | 'software'
+  | 'graphics'
+  | 'videos'
+  | 'links'
+  | 'other';
+
+export interface VaultDeliverable {
+  id: string;
+  deadlineId: string;
+  deadlineTitle: string;
+  title: string;
+  expectedOutput: string;
+  summary: string;
+  category: DeliverableVaultCategory;
+  deliverableType: DeliverableType;
+  submissionFormat: SubmissionFormat;
+  resourceUri: string;
+  resourceType: 'file' | 'url' | 'repository' | 'collection';
+  status: 'draft' | 'submitted' | 'accepted' | 'revision_requested';
+  submittedAt: string;
+  updatedAt: string;
+  fileMetadata?: {
+    filename?: string;
+    filesize?: string;
+    filetype?: string;
+  };
+  verificationNotes?: string;
+  tags?: string[];
+}
+
 export interface User {
   id: string;
   name: string;

@@ -43,10 +43,17 @@ import { projectInitializationService } from '@/core/project/ProjectInitializati
 
 export type NavigationTab =
   | 'overview'
+  | 'dashboard'
+  | 'deadlines'
   | 'my-deadlines'
   | 'upcoming'
   | 'in-progress'
   | 'completed'
+  | 'execution-engine'
+  | 'execution'
+  | 'prototype-workspace'
+  | 'prototypes'
+  | 'deliverable-vault'
   | 'deliverables'
   | 'analytics'
   | 'settings';
