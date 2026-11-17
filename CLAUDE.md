@@ -23,6 +23,14 @@ Every deadline answers six fundamental questions:
 5. **What do I need to do to finish it?** (Milestones on the critical path)
 6. **Where is my final deliverable?** (Submitted URL, repository, or archive)
 
+### Product priority: Crisis Intelligence
+
+Treat **Crisis Intelligence** as one of Deadline's defining features. It is the per-deadline memory of how the work was planned and delivered: the project brief, implementation notes, recorded IDE activity, available agent conversations, verification results, and a reusable task prompt. People should be able to export the report as Markdown and carry its useful context into a similar future project instead of rebuilding that context from memory. The product goal is to reduce repeated setup, duplicated work, time, and avoidable AI usage; never present savings as guaranteed or measured unless supported by real data.
+
+Keep the feature useful to everyone who works toward a time-bound outcome, not only software developers. Future product work may tailor workflows by age group, industry, and profession while retaining the same deliverable-first foundation. When working on this area, preserve local-first privacy: read only session data available on the user's computer or explicitly imported, and do not imply access to a provider's private system prompt or unavailable conversation history. The generated prompt is Deadline's reusable task instruction.
+
+The end-to-end value loop is: **set a deadline → produce the deliverable → preserve the build story → export the report and prompt → reuse and adapt them for the next similar project.** Prioritize clear capture, trustworthy provenance, easy Markdown export, and frictionless reuse across IDE agents.
+
 ---
 
 ## 2. Instructions for Claude Code

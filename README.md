@@ -2,6 +2,18 @@
 
 **Work. Build. Deliver.** Deadline is a local-first workspace for turning a time-bound goal into a concrete deliverable. Create a deadline, define the expected output and fallback MVP, plan milestones, build in your preferred tools, and keep the build record with the project.
 
+## The standout feature: Crisis Intelligence
+
+**Keep the conversation, decisions, and build knowledge behind every deliverable.** Crisis Intelligence creates a reusable build record for each deadline, so the work you already did can help you move faster the next time.
+
+For a project, it brings together the deadline brief, implementation notes, milestone and execution activity, and available IDE conversation transcripts. Discover saved Codex CLI or Claude Code sessions through the optional local bridge, or import a transcript from another tool. The report can include the conversation and recorded tool activity, and can be downloaded as Markdown. Deadline also generates a task-specific agent prompt from the project brief that you can copy or export and reuse with Codex, Claude Code, Antigravity, Cursor, Windsurf, or another coding agent.
+
+That gives you a practical handoff: reuse the original context, decisions, and prompt instead of reconstructing them from memory or starting a similar project from a blank page. The goal is to cut repeated setup and duplicated effort, helping people save time and reduce unnecessary AI usage and project costs. Actual savings depend on the project and how you use the records.
+
+**Typical workflow:** create a deadline → build with your preferred tools → attach or discover the session → preserve implementation notes and verification results → export the Crisis Intelligence report and reusable prompt → adapt them for the next similar project.
+
+Transcripts stay on your computer and are included only when available locally or imported by you. The generated prompt is Deadline's reusable instruction for the task, not an IDE vendor's private system prompt.
+
 Deadline is an early-stage open-source project. It runs on your computer in a browser. It does not require a Deadline account or a hosted Deadline service.
 
 ## What you can do
@@ -9,7 +21,7 @@ Deadline is an early-stage open-source project. It runs on your computer in a br
 - Organize deadlines, priorities, milestones, and deliverables in one workspace.
 - Track progress and upcoming or overdue work from the dashboard.
 - Use the Execution Engine to create an AI-assisted plan with your own provider credentials.
-- Record IDE sessions and view project build notes and reusable prompts in **Crisis Intelligence**. Session discovery depends on the optional local bridge and the session data available on your computer.
+- Preserve and reuse project context in **Crisis Intelligence**: IDE conversations, recorded actions, implementation notes, verification results, downloadable Markdown reports, and task-specific prompts.
 - Export reports and back up or restore app data.
 - Choose light or dark appearance and use synthesized interface sounds.
 
