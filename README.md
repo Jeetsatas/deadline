@@ -14,6 +14,28 @@ That gives you a practical handoff: reuse the original context, decisions, and p
 
 Transcripts stay on your computer and are included only when available locally or imported by you. The generated prompt is Deadline's reusable instruction for the task, not an IDE vendor's private system prompt.
 
+### See Crisis Intelligence in action
+
+These screenshots use an illustrative community workshop project and sample session content.
+
+<p align="center">
+  <img src="docs/screenshots/crisis-intelligence-overview.jpg" alt="Crisis Intelligence hub showing a sample community workshop deadline" width="100%" />
+</p>
+
+The hub gives each deadline its own build record, making it easy to reopen the context for a past or active project.
+
+<p align="center">
+  <img src="docs/screenshots/crisis-intelligence-build-record.jpg" alt="A deadline's Crisis Intelligence build record, conversation capture, and report export controls" width="100%" />
+</p>
+
+Attach an available IDE transcript or import one, then keep the conversation and project notes with that deadline.
+
+<p align="center">
+  <img src="docs/screenshots/crisis-intelligence-report-and-prompt.jpg" alt="Crisis Intelligence Markdown summary beside a reusable agent prompt" width="100%" />
+</p>
+
+Copy or export the Markdown report and task prompt to carry the project context into similar work.
+
 Deadline is an early-stage open-source project. It runs on your computer in a browser. It does not require a Deadline account or a hosted Deadline service.
 
 ## What you can do
