@@ -4,9 +4,13 @@
 
 ## The standout feature: Crisis Intelligence
 
-**Keep the conversation, decisions, and build knowledge behind every deliverable.** Crisis Intelligence creates a reusable build record for each deadline, so the work you already did can help you move faster the next time.
+**Keep the metadata, decisions, and build knowledge behind every deliverable.** Crisis Intelligence creates a separate reusable record and task-specific agent prompt for every deadline, across project types: software, coursework, research, design, business work, and other deliverables. The work you already did can help you move faster the next time.
 
 For a project, it brings together the deadline brief, implementation notes, milestone and execution activity, and available IDE conversation transcripts. Discover saved Codex CLI or Claude Code sessions through the local bridge, which is required for automatic local IDE session discovery, or import a transcript file from another tool. The report can include the conversation and recorded tool activity, and can be downloaded as Markdown. Deadline also generates a task-specific agent prompt from the project brief that you can copy or export and reuse with Codex, Claude Code, Antigravity, Cursor, Windsurf, or another coding agent.
+
+### Why it is different
+
+An IDE's Markdown notes can be helpful, but an agent may not load an old file in a later session, and stale or incomplete context can lead it to make unsupported assumptions. Crisis Intelligence keeps each project's metadata in Deadline's own local record—deliverable type, target output, fallback MVP, due date, priority, milestones, implementation notes, and available agent conversation—and generates a fresh prompt from that project's data. That gives you an explicit context handoff across IDEs and project types, instead of depending on an agent to remember or rediscover the history. It can reduce context drift and the chance of guessed details; it cannot guarantee that an AI agent will never hallucinate, so verify outputs and keep project notes current.
 
 That gives you a practical handoff: reuse the original context, decisions, and prompt instead of reconstructing them from memory or starting a similar project from a blank page. The goal is to cut repeated setup and duplicated effort, helping people save time and reduce unnecessary AI usage and project costs. Actual savings depend on the project and how you use the records.
 
