@@ -13,7 +13,7 @@ npm ci
 npm run dev
 ```
 
-The development URL is printed by Vite (normally `http://localhost:5173`). For bridge work, start the optional local service in another terminal with `npm run bridge`.
+The development URL is printed by Vite (normally `http://localhost:5173`). To work on IDE integration or automatic local session discovery, start the local bridge in another terminal with `npm run bridge`.
 
 ## Before submitting
 

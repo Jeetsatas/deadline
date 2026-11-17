@@ -14,4 +14,4 @@ This project has no published response-time or remediation-time guarantee. Maint
 
 ## Local data and credentials
 
-Deadline stores app records in browser local storage. AI provider keys are held in browser session memory by the app and should not be pasted into public reports. The optional bridge uses a local pairing secret stored in `~/.deadline/bridge-auth.json`; keep it private and keep the bridge bound to loopback.
+Deadline stores app records in browser local storage. AI provider keys are held in browser session memory by the app and should not be pasted into public reports. The local IDE bridge uses a pairing secret stored in `~/.deadline/bridge-auth.json`; keep it private and keep the bridge bound to loopback.

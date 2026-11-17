@@ -6,7 +6,7 @@
 
 **Keep the conversation, decisions, and build knowledge behind every deliverable.** Crisis Intelligence creates a reusable build record for each deadline, so the work you already did can help you move faster the next time.
 
-For a project, it brings together the deadline brief, implementation notes, milestone and execution activity, and available IDE conversation transcripts. Discover saved Codex CLI or Claude Code sessions through the optional local bridge, or import a transcript from another tool. The report can include the conversation and recorded tool activity, and can be downloaded as Markdown. Deadline also generates a task-specific agent prompt from the project brief that you can copy or export and reuse with Codex, Claude Code, Antigravity, Cursor, Windsurf, or another coding agent.
+For a project, it brings together the deadline brief, implementation notes, milestone and execution activity, and available IDE conversation transcripts. Discover saved Codex CLI or Claude Code sessions through the local bridge, which is required for automatic local IDE session discovery, or import a transcript file from another tool. The report can include the conversation and recorded tool activity, and can be downloaded as Markdown. Deadline also generates a task-specific agent prompt from the project brief that you can copy or export and reuse with Codex, Claude Code, Antigravity, Cursor, Windsurf, or another coding agent.
 
 That gives you a practical handoff: reuse the original context, decisions, and prompt instead of reconstructing them from memory or starting a similar project from a blank page. The goal is to cut repeated setup and duplicated effort, helping people save time and reduce unnecessary AI usage and project costs. Actual savings depend on the project and how you use the records.
 
@@ -70,9 +70,9 @@ Open the local URL printed by Vite (normally `http://localhost:5173`). To choose
 
 The first browser profile is initialized with sample deadlines so the screens are populated. You can edit or remove those records and create your own. App data is stored in that browser's local storage; clearing browser site data removes it. Use the built-in JSON backup before moving data to another browser or computer.
 
-## Optional local IDE bridge
+## Local IDE bridge
 
-The bridge lets the browser app communicate with selected local project folders and supported IDE session data. It is optional; the rest of the app works without it.
+The local bridge is required for automatic IDE integration: it lets Deadline discover supported IDE sessions on your computer and access project files in folders you approve. Deadline's deadline tracking and other workspace features work without the bridge. You can also import a transcript file manually if you do not use automatic session discovery.
 
 In another terminal, from the repository directory:
 
@@ -92,7 +92,7 @@ AI planning is optional. Configure a supported provider and provide your own API
 
 ```bash
 npm run dev       # Start the Vite development server
-npm run bridge    # Start the optional local bridge
+npm run bridge    # Start the local bridge for IDE integration
 npm run lint      # Run ESLint
 npm test          # Run Vitest
 npm run build     # Type-check and create the production bundle
@@ -107,14 +107,14 @@ src/components/    React views and UI components
 src/services/      Local persistence and application services
 src/store/         Zustand application state
 src/types/         Shared TypeScript domain types
-bridge/            Optional loopback-only Node.js bridge
+bridge/            Loopback-only Node.js bridge for IDE integration
 .github/           GitHub Actions CI and contribution templates
 ```
 
 ## Data and privacy
 
 - The application is local-first: regular app records are stored in browser local storage.
-- The optional bridge runs on loopback and accesses only folders approved by the user.
+- The local bridge runs on loopback and accesses only folders approved by the user; automatic IDE session discovery requires it to be running and paired.
 - AI provider calls require your own credentials and send the context needed for the requested operation to that provider.
 - No hosted Deadline database, user account, or synchronization service is included.
 
