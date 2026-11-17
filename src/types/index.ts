@@ -159,6 +159,7 @@ export interface Deadline {
   milestones: Milestone[];
   finalDeliverable?: FinalDeliverable;
   notes: string;
+  crisisImplementationNotes?: string;
   tags: string[];
   createdAt: string;
   updatedAt: string;

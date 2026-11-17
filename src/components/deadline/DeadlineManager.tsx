@@ -108,10 +108,10 @@ export const DeadlineManager: React.FC<DeadlineManagerProps> = ({ initialTab = '
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-4 border-b border-border">
         <div>
           <div className="flex items-center gap-2">
-            <h1 className="text-2xl font-bold tracking-tight text-foreground">
+            <h1 className="text-3xl font-bold tracking-tight text-foreground">
               Deadline Manager
             </h1>
-            <span className="font-mono text-xs px-2 py-0.5 rounded-full bg-secondary text-muted-foreground font-semibold">
+            <span className="text-xs px-2 py-1 bg-secondary text-muted-foreground font-semibold">
               {filtered.length} of {deadlines.length}
             </span>
           </div>
@@ -128,7 +128,7 @@ export const DeadlineManager: React.FC<DeadlineManagerProps> = ({ initialTab = '
       </div>
 
       {/* Sub-Navigation Status Tabs */}
-      <div className="flex items-center gap-1.5 overflow-x-auto pb-1 border-b border-border/60">
+      <div className="flex items-center gap-5 overflow-x-auto border-b border-border">
         {[
           { id: 'all' as const, label: 'All Deadlines', count: counts.all, icon: CalendarRange },
           { id: 'active' as const, label: 'Active', count: counts.active, icon: PlayCircle },
@@ -144,10 +144,10 @@ export const DeadlineManager: React.FC<DeadlineManagerProps> = ({ initialTab = '
               key={tab.id}
               type="button"
               onClick={() => setActiveTab(tab.id)}
-              className={`flex items-center gap-2 px-3.5 py-2 rounded-lg text-xs font-semibold transition-all shrink-0 cursor-pointer ${
+              className={`flex items-center gap-2 px-1 py-3 border-b-2 text-xs font-bold uppercase tracking-[0.08em] transition-colors shrink-0 cursor-pointer ${
                 isActive
-                  ? 'bg-secondary text-foreground shadow-xs border border-border/80'
-                  : 'text-muted-foreground hover:text-foreground hover:bg-secondary/50'
+                  ? 'text-foreground border-b-foreground'
+                  : 'text-muted-foreground border-b-transparent hover:text-foreground'
               }`}
             >
               <Icon
@@ -161,7 +161,7 @@ export const DeadlineManager: React.FC<DeadlineManagerProps> = ({ initialTab = '
               />
               <span>{tab.label}</span>
               <span
-                className={`font-mono text-[10px] px-1.5 py-0.2 rounded-full font-bold ${
+                className={`font-sans text-[10px] px-1.5 py-0.5 font-semibold ${
                   tab.danger && tab.count > 0
                     ? 'bg-rose-500/10 text-rose-500'
                     : isActive

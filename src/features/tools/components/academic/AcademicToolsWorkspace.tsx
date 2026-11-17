@@ -90,7 +90,7 @@ export const AcademicToolsWorkspace: React.FC<AcademicToolsWorkspaceProps> = ({ 
               Fetch by DOI (Crossref API)
             </h3>
             <p className="text-xs text-muted-foreground">
-              Enter any scientific publication DOI to automatically populate metadata:
+              DOI lookup sends the DOI to the external Crossref API to retrieve publication metadata:
             </p>
             <div className="flex gap-2">
               <input

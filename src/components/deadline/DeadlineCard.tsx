@@ -60,7 +60,7 @@ export const DeadlineCard: React.FC<DeadlineCardProps> = ({
     return (
       <div
         onClick={handleCardClick}
-        className="group relative flex items-center justify-between p-3 rounded-lg border border-border/80 bg-card hover:bg-secondary/40 hover:border-zinc-400/40 dark:hover:border-zinc-700/60 transition-all cursor-pointer"
+        className="group relative flex items-center justify-between p-4 border border-border bg-card hover:bg-secondary/40 transition-colors cursor-pointer"
       >
         <div className="flex items-center gap-3 min-w-0 pr-4">
           <div
@@ -94,7 +94,7 @@ export const DeadlineCard: React.FC<DeadlineCardProps> = ({
   return (
     <div
       onClick={handleCardClick}
-      className="group relative flex flex-col justify-between p-5 rounded-xl border border-border/80 bg-card hover:bg-secondary/20 hover:border-zinc-400/50 dark:hover:border-zinc-700/70 transition-all duration-150 shadow-sm hover:shadow cursor-pointer"
+      className="group relative flex flex-col justify-between p-5 border border-border bg-card hover:bg-secondary/30 transition-colors cursor-pointer"
     >
       {/* Top Header: Title, Tags, Context Menu */}
       <div>

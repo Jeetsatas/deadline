@@ -121,12 +121,12 @@ export const ExecutionEngineView: React.FC = () => {
         {/* Metric 3 */}
         <div className="p-4 rounded-xl border border-border bg-card shadow-xs space-y-1">
           <span className="text-[11px] font-medium text-muted-foreground uppercase tracking-wider block">
-            Running IDE Sessions
+            Opened IDE Workspaces
           </span>
           <div className="text-2xl font-bold font-mono tracking-tight text-primary">
             {activeSessionsList.length}
           </div>
-          <span className="text-[10px] text-muted-foreground">Active coding sessions</span>
+          <span className="text-[10px] text-muted-foreground">Deadline cannot track editor agent processes</span>
         </div>
 
         {/* Metric 4 */}

@@ -6,9 +6,11 @@ import { DefaultExecutionEngine } from '@/core/execution';
 // Mock localStorage for Node test runner
 const localStorageMock = (() => {
   let store: Record<string, string> = {};
+  let failWrites = false;
   return {
     getItem: (key: string) => store[key] || null,
     setItem: (key: string, value: string) => {
+      if (failWrites) throw new Error('QuotaExceededError');
       store[key] = value.toString();
     },
     removeItem: (key: string) => {
@@ -17,6 +19,7 @@ const localStorageMock = (() => {
     clear: () => {
       store = {};
     },
+    setFailWrites: (value: boolean) => { failWrites = value; },
   };
 })();
 
@@ -31,7 +34,32 @@ describe('Functional Workflows Audit & Persistence Testing', () => {
 
   beforeEach(() => {
     localStorageMock.clear();
+    localStorageMock.setFailWrites(false);
     adapter = new LocalStorageAdapter();
+  });
+
+  it('starts with no fictional demo deadlines or activity on a fresh install', async () => {
+    expect(await adapter.getDeadlines()).toEqual([]);
+    expect(await adapter.getActivities()).toEqual([]);
+  });
+
+  it('removes known sample records while preserving user-created local records', async () => {
+    localStorageMock.setItem('deadline_app_deadlines_v1', JSON.stringify([
+      { id: 'dl_calc_2026', title: 'Sample fixture' },
+      { id: 'user_deadline_01', title: 'My real project' },
+    ]));
+    localStorageMock.setItem('deadline_app_activities_v1', JSON.stringify([
+      { id: 'act_1', title: 'Sample fixture' },
+      { id: 'user_activity_01', title: 'My real activity' },
+    ]));
+
+    expect(await adapter.getDeadlines()).toEqual([{ id: 'user_deadline_01', title: 'My real project' }]);
+    expect(await adapter.getActivities()).toEqual([{ id: 'user_activity_01', title: 'My real activity' }]);
+  });
+
+  it('does not report successful metadata persistence when browser storage is full', async () => {
+    localStorageMock.setFailWrites(true);
+    await expect(adapter.getDeadlines()).rejects.toThrow('Browser storage could not save');
   });
 
   it('Workflow 1, 4 & 5: Create a deadline, persist to LocalStorage, and reload across session simulation', async () => {

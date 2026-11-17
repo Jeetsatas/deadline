@@ -9,6 +9,7 @@ import { executionEngine } from '@/core/execution';
 import { SubmitDeliverableModal } from '@/components/deliverables/SubmitDeliverableModal';
 import { AIExecutionPlanSection } from './AIExecutionPlanSection';
 import { IDEExecutionSection } from './IDEExecutionSection';
+import { CrisisIntelligence } from './CrisisIntelligence';
 import { PrepareProjectModal } from '@/components/project/PrepareProjectModal';
 import { formatDate, formatDateTime, generateDeadlineMarkdownReport } from '@/lib/utils';
 import {
@@ -45,9 +46,10 @@ import {
 interface DeadlineWorkspaceProps {
   deadline: Deadline;
   onBack: () => void;
+  initialWorkspaceTab?: 'execution' | 'crisis_intelligence';
 }
 
-export const DeadlineWorkspace: React.FC<DeadlineWorkspaceProps> = ({ deadline, onBack }) => {
+export const DeadlineWorkspace: React.FC<DeadlineWorkspaceProps> = ({ deadline, onBack, initialWorkspaceTab = 'execution' }) => {
   const {
     toggleMilestone,
     addMilestone,
@@ -77,7 +79,7 @@ export const DeadlineWorkspace: React.FC<DeadlineWorkspaceProps> = ({ deadline, 
   const [showAddLink, setShowAddLink] = useState(false);
   const [linkTitle, setLinkTitle] = useState('');
   const [linkUrl, setLinkUrl] = useState('');
-  const [workspaceTab, setWorkspaceTab] = useState<'execution' | 'ai_plan' | 'ide_execution'>('execution');
+  const [workspaceTab, setWorkspaceTab] = useState<'execution' | 'ai_plan' | 'ide_execution' | 'crisis_intelligence'>(initialWorkspaceTab);
 
   const activeSession = activeExecutionSessions[deadline.id];
 
@@ -298,7 +300,7 @@ export const DeadlineWorkspace: React.FC<DeadlineWorkspaceProps> = ({ deadline, 
           <span>Development Environment</span>
           {activeSession && activeSession.status === 'running' ? (
             <span className="text-[10px] font-mono px-1.5 py-0.2 rounded-full bg-emerald-500/20 text-emerald-600 dark:text-emerald-400 font-bold ml-1 animate-pulse">
-              Running
+              Agent running
             </span>
           ) : (
             <span className="text-[10px] font-mono px-1.5 py-0.2 rounded-full bg-background/20 font-bold ml-1">
@@ -306,9 +308,24 @@ export const DeadlineWorkspace: React.FC<DeadlineWorkspaceProps> = ({ deadline, 
             </span>
           )}
         </button>
+
+        <button
+          type="button"
+          onClick={() => setWorkspaceTab('crisis_intelligence')}
+          className={`flex items-center gap-2 px-3.5 py-2 rounded-lg text-xs font-semibold transition-all cursor-pointer ${
+            workspaceTab === 'crisis_intelligence'
+              ? 'bg-primary text-white shadow-sm'
+              : 'bg-secondary/60 text-muted-foreground hover:text-foreground hover:bg-secondary'
+          }`}
+        >
+          <AlertCircle className="h-4 w-4" />
+          <span>Crisis Intelligence</span>
+        </button>
       </div>
 
-      {workspaceTab === 'ai_plan' ? (
+      {workspaceTab === 'crisis_intelligence' ? (
+        <CrisisIntelligence deadline={deadline} />
+      ) : workspaceTab === 'ai_plan' ? (
         <AIExecutionPlanSection
           deadline={deadline}
           onOpenIDE={openPrepareProjectModal}

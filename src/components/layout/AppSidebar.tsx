@@ -9,6 +9,7 @@ import {
   FolderGit2,
   Wrench,
   BarChart3,
+  ShieldAlert,
   Settings,
   Plus,
   ChevronLeft,
@@ -72,6 +73,13 @@ export const AppSidebar: React.FC<AppSidebarProps> = ({
       badge: statistics.active > 0 ? statistics.active : undefined,
     },
     {
+      id: 'crisis-intelligence',
+      aliasMatch: ['crisis-intelligence'],
+      label: 'Crisis Intelligence',
+      icon: ShieldAlert,
+      badge: deadlines.length > 0 ? deadlines.length : undefined,
+    },
+    {
       id: 'deadlines',
       aliasMatch: ['deadlines', 'my-deadlines', 'upcoming', 'in-progress', 'completed'],
       label: 'Deadline Manager',
@@ -123,7 +131,7 @@ export const AppSidebar: React.FC<AppSidebarProps> = ({
     },
   ];
 
-  const currentTheme = user?.preferences?.theme || 'dark';
+  const currentTheme = user?.preferences?.theme || 'light';
 
   const toggleTheme = () => {
     const nextTheme = currentTheme === 'dark' ? 'light' : 'dark';
@@ -143,10 +151,10 @@ export const AppSidebar: React.FC<AppSidebarProps> = ({
       {/* Top Section */}
       <div className="flex flex-col min-h-0 flex-1">
         {/* Brand Header & Toggle */}
-        <div className="flex items-center justify-between h-14 px-3.5 border-b border-border/80 shrink-0">
+        <div className="flex items-center justify-between h-16 px-3.5 border-b border-border shrink-0">
           {!isCollapsed && (
             <div className="flex items-center gap-2.5 min-w-0">
-              <div className="h-7 w-7 rounded-lg bg-primary flex items-center justify-center text-white shadow-sm shrink-0">
+              <div className="h-8 w-8 bg-primary flex items-center justify-center text-white shrink-0">
                 <svg
                   xmlns="http://www.w3.org/2000/svg"
                   viewBox="0 0 24 24"
@@ -175,7 +183,7 @@ export const AppSidebar: React.FC<AppSidebarProps> = ({
           {isCollapsed && (
             <div className="mx-auto">
               <div
-                className="h-7 w-7 rounded-lg bg-primary flex items-center justify-center text-white shadow-sm cursor-pointer"
+                className="h-8 w-8 bg-primary flex items-center justify-center text-white cursor-pointer"
                 onClick={onToggleCollapse}
                 title="Expand Sidebar"
               >
@@ -200,7 +208,7 @@ export const AppSidebar: React.FC<AppSidebarProps> = ({
             <button
               type="button"
               onClick={onToggleCollapse}
-              className="p-1.5 rounded-md text-muted-foreground hover:bg-secondary hover:text-foreground transition-colors cursor-pointer"
+              className="h-9 w-9 flex items-center justify-center text-muted-foreground hover:bg-secondary hover:text-foreground transition-colors cursor-pointer"
               aria-label="Collapse sidebar"
               title="Collapse sidebar"
             >
@@ -214,8 +222,8 @@ export const AppSidebar: React.FC<AppSidebarProps> = ({
           <Button
             variant="primary"
             onClick={() => openCreateModal()}
-            className={`w-full justify-center shadow-sm font-semibold transition-all ${
-              isCollapsed ? 'px-0 h-9' : 'h-9 px-3 text-xs'
+            className={`w-full justify-center shadow-none font-semibold transition-colors ${
+              isCollapsed ? 'px-0 h-11' : 'h-11 px-3 text-sm'
             }`}
             title="Create Deadline (N)"
           >
@@ -229,7 +237,7 @@ export const AppSidebar: React.FC<AppSidebarProps> = ({
           {/* Group 1: WORKSPACE */}
           <div className="space-y-1">
             {!isCollapsed ? (
-              <div className="px-2 pb-1.5 text-[10px] font-bold uppercase tracking-wider text-muted-foreground/70 font-mono">
+              <div className="px-2 pb-1.5 text-[10px] font-bold uppercase tracking-[0.12em] text-muted-foreground/70">
                 Workspace
               </div>
             ) : (
@@ -246,10 +254,10 @@ export const AppSidebar: React.FC<AppSidebarProps> = ({
                   type="button"
                   onClick={() => setActiveTab(item.id)}
                   title={isCollapsed ? `${item.label}${item.badge !== undefined ? ` (${item.badge})` : ''}` : undefined}
-                  className={`w-full flex items-center gap-3 px-2.5 py-2 rounded-lg text-xs font-medium transition-all group cursor-pointer relative ${
+                  className={`w-full flex items-center gap-3 px-2.5 py-2.5 border-l-2 text-sm font-medium transition-colors group cursor-pointer relative ${
                     active
-                      ? 'bg-secondary text-foreground font-semibold shadow-xs border border-border/70'
-                      : 'text-muted-foreground hover:bg-secondary/60 hover:text-foreground border border-transparent'
+                      ? 'bg-primary/5 text-primary font-semibold border-l-primary border-y-transparent border-r-transparent'
+                      : 'text-muted-foreground hover:bg-secondary/70 hover:text-foreground border-transparent'
                   }`}
                 >
                   <Icon
@@ -286,7 +294,7 @@ export const AppSidebar: React.FC<AppSidebarProps> = ({
           {/* Group 2: PREFERENCES */}
           <div className="space-y-1 pt-2 border-t border-border/50">
             {!isCollapsed ? (
-              <div className="px-2 pb-1.5 text-[10px] font-bold uppercase tracking-wider text-muted-foreground/70 font-mono">
+              <div className="px-2 pb-1.5 text-[10px] font-bold uppercase tracking-[0.12em] text-muted-foreground/70">
                 Preferences
               </div>
             ) : (
@@ -303,10 +311,10 @@ export const AppSidebar: React.FC<AppSidebarProps> = ({
                   type="button"
                   onClick={() => setActiveTab(item.id)}
                   title={isCollapsed ? item.label : undefined}
-                  className={`w-full flex items-center gap-3 px-2.5 py-2 rounded-lg text-xs font-medium transition-all group cursor-pointer relative ${
+                  className={`w-full flex items-center gap-3 px-2.5 py-2.5 border-l-2 text-sm font-medium transition-colors group cursor-pointer relative ${
                     active
-                      ? 'bg-secondary text-foreground font-semibold shadow-xs border border-border/70'
-                      : 'text-muted-foreground hover:bg-secondary/60 hover:text-foreground border border-transparent'
+                      ? 'bg-primary/5 text-primary font-semibold border-l-primary border-y-transparent border-r-transparent'
+                      : 'text-muted-foreground hover:bg-secondary/70 hover:text-foreground border-transparent'
                   }`}
                 >
                   <Icon

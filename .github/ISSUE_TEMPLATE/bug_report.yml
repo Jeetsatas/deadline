@@ -1,0 +1,48 @@
+name: Bug report
+description: Report a reproducible problem in Deadline
+title: "[Bug]: "
+body:
+  - type: markdown
+    attributes:
+      value: "Please do not include API keys, bridge pairing secrets, personal data, or private IDE transcripts. Report security vulnerabilities privately as described in SECURITY.md."
+  - type: input
+    id: version
+    attributes:
+      label: Deadline version or commit
+      placeholder: "0.1.0-alpha or commit hash"
+    validations:
+      required: true
+  - type: input
+    id: environment
+    attributes:
+      label: Environment
+      description: Include OS, browser, and Node.js version if relevant.
+    validations:
+      required: true
+  - type: textarea
+    id: reproduce
+    attributes:
+      label: Steps to reproduce
+      description: List the steps that lead to the problem.
+      placeholder: "1. ...\n2. ...\n3. ..."
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behavior
+    validations:
+      required: true
+  - type: textarea
+    id: actual
+    attributes:
+      label: Actual behavior
+    validations:
+      required: true
+  - type: textarea
+    id: evidence
+    attributes:
+      label: Screenshots or logs
+      description: Redact secrets and personal information before attaching.
+    validations:
+      required: false

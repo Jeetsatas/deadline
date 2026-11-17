@@ -42,7 +42,7 @@ export const Badge: React.FC<BadgeProps> = ({
         styleClasses = 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/20';
         break;
       case 'in_progress':
-        styleClasses = 'bg-orange-500/10 text-orange-600 dark:text-orange-400 border-orange-500/20';
+        styleClasses = 'bg-primary/10 text-primary border-primary/20';
         break;
       case 'review':
         styleClasses = 'bg-purple-500/10 text-purple-600 dark:text-purple-400 border-purple-500/20';

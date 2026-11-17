@@ -17,6 +17,7 @@ export default {
         },
         primary: {
           DEFAULT: 'hsl(var(--primary))',
+          active: 'hsl(var(--primary-active))',
           foreground: 'hsl(var(--primary-foreground))',
           subtle: 'hsl(var(--primary-subtle))',
         },
@@ -39,11 +40,17 @@ export default {
         border: 'hsl(var(--border))',
         input: 'hsl(var(--input))',
         ring: 'hsl(var(--ring))',
+        surface: {
+          dark: 'hsl(var(--surface-dark))',
+        },
       },
       borderRadius: {
-        lg: 'var(--radius)',
-        md: 'calc(var(--radius) - 2px)',
-        sm: 'calc(var(--radius) - 4px)',
+        lg: '4px',
+        md: '4px',
+        sm: '2px',
+      },
+      maxWidth: {
+        '7xl': '1440px',
       },
       fontFamily: {
         sans: [

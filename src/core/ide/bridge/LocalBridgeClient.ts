@@ -6,6 +6,7 @@ import {
   LaunchResult,
   WorkspaceChangesResult,
   ExecutionSessionStatus,
+  IDETranscriptSession,
 } from '../types';
 import type {
   HostRuntimes,
@@ -79,7 +80,7 @@ export class LocalBridgeClient implements ILocalBridgeClient {
           'Content-Type': 'application/json',
           Authorization: `Bearer ${trimmed}`,
         },
-        body: JSON.stringify({ token: trimmed }),
+        body: JSON.stringify({}),
         signal: AbortSignal.timeout(3000),
       });
 
@@ -213,6 +214,35 @@ export class LocalBridgeClient implements ILocalBridgeClient {
     }
 
     return await res.json();
+  }
+
+  async discoverTranscripts(projectPath: string, providerId: IDEProviderId): Promise<{ sessions: IDETranscriptSession[]; message?: string }> {
+    const res = await fetch(`${this.baseUrl}/workspace/transcripts/discover`, {
+      method: 'POST',
+      headers: this.getHeaders(),
+      body: JSON.stringify({ projectPath, providerId }),
+      signal: AbortSignal.timeout(15000),
+    });
+    const data = await res.json().catch(() => null);
+    if (!res.ok) throw new Error(data?.error || `Transcript discovery failed: HTTP ${res.status}`);
+    return { sessions: data?.sessions || [], message: data?.message };
+  }
+
+  async readTranscript(projectPath: string, providerId: IDEProviderId, sessionId: string): Promise<{
+    success: boolean;
+    messages?: Array<{ role: 'user' | 'assistant' | 'tool'; text: string; toolName?: string; timestamp?: string }>;
+    session?: IDETranscriptSession;
+    error?: string;
+  }> {
+    const res = await fetch(`${this.baseUrl}/workspace/transcripts/read`, {
+      method: 'POST',
+      headers: this.getHeaders(),
+      body: JSON.stringify({ projectPath, providerId, sessionId }),
+      signal: AbortSignal.timeout(30000),
+    });
+    const data = await res.json().catch(() => null);
+    if (!res.ok) throw new Error(data?.error || `Transcript import failed: HTTP ${res.status}`);
+    return data;
   }
 
   async pickFolder(

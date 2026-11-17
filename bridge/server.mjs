@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-/* global process, console, URL */
+/* global process, console, URL, Buffer */
 
 /**
  * Deadline Local Execution Bridge Daemon
@@ -15,6 +15,7 @@ import path from 'node:path';
 import os from 'node:os';
 import crypto from 'node:crypto';
 import { spawn, execSync, spawnSync } from 'node:child_process';
+import { discoverProjectTranscripts, readProjectTranscript } from './transcripts.mjs';
 
 const PORT = parseInt(process.env.DEADLINE_BRIDGE_PORT || '4488', 10);
 const HOST = '127.0.0.1';
@@ -52,6 +53,9 @@ if (!pairingToken) {
 
 // Active sessions tracking
 const activeSessions = new Map();
+const approvedDirectories = new Set();
+const pairFailures = new Map();
+const MAX_BODY_BYTES = 1024 * 1024;
 
 // Helper: Append to audit log
 function writeAuditLog(action, metadata = {}) {
@@ -62,8 +66,13 @@ function writeAuditLog(action, metadata = {}) {
   };
   try {
     fs.appendFileSync(AUDIT_LOG_FILE, JSON.stringify(entry) + '\n', { mode: 0o600 });
-  } catch (err) {
-    console.error('[AuditLog] Failed to append log:', err);
+    const stat = fs.statSync(AUDIT_LOG_FILE);
+    if (stat.size > 1024 * 1024) {
+      const recent = fs.readFileSync(AUDIT_LOG_FILE, 'utf8').split('\n').filter(Boolean).slice(-2000).join('\n') + '\n';
+      fs.writeFileSync(AUDIT_LOG_FILE, recent, { mode: 0o600 });
+    }
+  } catch {
+    // Audit failures must not leak request content or secrets.
   }
 }
 
@@ -154,20 +163,71 @@ function validateProjectPath(rawPath) {
   }
 
   if (!fs.existsSync(resolved)) {
-    return { valid: false, error: `Directory does not exist: ${resolved}` };
+    return { valid: false, error: 'Directory does not exist.' };
   }
 
   try {
     const stat = fs.statSync(resolved);
     if (!stat.isDirectory()) {
-      return { valid: false, error: `Path is not a directory: ${resolved}` };
+      return { valid: false, error: 'Path is not a directory.' };
     }
-  } catch (e) {
-    return { valid: false, error: `Cannot read directory metadata: ${e.message}` };
+  } catch {
+    return { valid: false, error: 'Cannot read directory metadata.' };
   }
 
-  const isGitRepo = fs.existsSync(path.join(resolved, '.git'));
-  return { valid: true, resolvedPath: resolved, isGitRepo };
+  const canonical = fs.realpathSync(resolved);
+  if (forbiddenRoots.includes(canonical)) return { valid: false, error: 'Access to system root directory is forbidden.' };
+  const canonicalRoot = path.parse(canonical).root;
+  if (canonical === canonicalRoot || canonical === os.homedir()) {
+    return { valid: false, error: 'Select a project subdirectory rather than a filesystem or home root.' };
+  }
+  if (![...approvedDirectories].some((root) => canonical === root || canonical.startsWith(root + path.sep))) {
+    return { valid: false, error: 'Select and approve this project directory using the native folder picker.' };
+  }
+
+  const isGitRepo = fs.existsSync(path.join(canonical, '.git'));
+  return { valid: true, resolvedPath: canonical, isGitRepo };
+}
+
+function approveProjectPath(rawPath) {
+  if (!rawPath || typeof rawPath !== 'string' || rawPath.includes('\0')) {
+    return { valid: false, error: 'Project path must be a valid non-empty directory path.' };
+  }
+  const resolved = path.resolve(path.normalize(rawPath.replace(/[\r\n]+/g, '')));
+  if (resolved === path.parse(resolved).root || resolved === os.homedir()) {
+    return { valid: false, error: 'Select a project subdirectory rather than a filesystem or home root.' };
+  }
+  if (!fs.existsSync(resolved)) return { valid: false, error: 'Directory does not exist.' };
+  try {
+    if (!fs.statSync(resolved).isDirectory()) return { valid: false, error: 'Path is not a directory.' };
+    const canonical = fs.realpathSync(resolved);
+    if (canonical === path.parse(canonical).root || canonical === os.homedir()) {
+      return { valid: false, error: 'Select a project subdirectory rather than a filesystem or home root.' };
+    }
+    approvedDirectories.add(canonical);
+    const validation = validateProjectPath(canonical);
+    if (!validation.valid) {
+      approvedDirectories.delete(canonical);
+      return validation;
+    }
+    writeAuditLog('APPROVE_PROJECT_DIRECTORY');
+    return validation;
+  } catch {
+    return { valid: false, error: 'Cannot read directory metadata.' };
+  }
+}
+
+function resolveProjectFile(projectRoot, relativePath) {
+  const candidate = path.resolve(projectRoot, relativePath);
+  const relative = path.relative(projectRoot, candidate);
+  if (!relative || relative.startsWith('..') || path.isAbsolute(relative)) throw new Error('Invalid project file path.');
+  if (!fs.existsSync(candidate)) return candidate;
+  const canonical = fs.realpathSync(candidate);
+  const canonicalRelative = path.relative(projectRoot, canonical);
+  if (!canonicalRelative || canonicalRelative.startsWith('..') || path.isAbsolute(canonicalRelative)) {
+    throw new Error('Project file escapes the selected directory.');
+  }
+  return canonical;
 }
 
 // Detect all 6 IDE providers
@@ -183,7 +243,7 @@ function detectAllProviders() {
       const v = spawnSync(claudeBinary, ['--version'], { encoding: 'utf8', timeout: 3000 });
       claudeVersion = (v.stdout || v.stderr || '').trim().split('\n')[0];
     } catch {
-      claudeVersion = 'Detected';
+      claudeVersion = '';
     }
   }
   providers.claude_code = {
@@ -202,7 +262,7 @@ function detectAllProviders() {
       const v = spawnSync(codexBinary, ['--version'], { encoding: 'utf8', timeout: 3000 });
       codexVersion = (v.stdout || v.stderr || '').trim().split('\n')[0];
     } catch {
-      codexVersion = 'Detected';
+      codexVersion = '';
     }
   }
   providers.codex = {
@@ -228,7 +288,7 @@ function detectAllProviders() {
       const v = spawnSync(antigravityBinary, ['--version'], { encoding: 'utf8', timeout: 3000 });
       antigravityVersion = (v.stdout || '').trim().split('\n')[0];
     } catch {
-      antigravityVersion = '1.107.0';
+      antigravityVersion = '';
     }
   }
   providers.antigravity = {
@@ -236,7 +296,7 @@ function detectAllProviders() {
     isInstalled: Boolean(antigravityBinary || antigravityApp),
     binaryPath: antigravityBinary || undefined,
     appPath: antigravityApp || undefined,
-    version: antigravityVersion || (antigravityApp ? 'Installed' : undefined),
+    version: antigravityVersion || undefined,
     detectedAt: now,
   };
 
@@ -248,7 +308,7 @@ function detectAllProviders() {
     isInstalled: Boolean(cursorBinary || cursorApp),
     binaryPath: cursorBinary || undefined,
     appPath: cursorApp || undefined,
-    version: cursorBinary ? 'Detected' : cursorApp ? 'Installed' : undefined,
+    version: undefined,
     detectedAt: now,
   };
 
@@ -260,7 +320,7 @@ function detectAllProviders() {
     isInstalled: Boolean(codeBinary || codeApp),
     binaryPath: codeBinary || undefined,
     appPath: codeApp || undefined,
-    version: codeBinary ? 'Detected' : codeApp ? 'Installed' : undefined,
+    version: undefined,
     detectedAt: now,
   };
 
@@ -272,10 +332,11 @@ function detectAllProviders() {
     isInstalled: Boolean(windsurfBinary || windsurfApp),
     binaryPath: windsurfBinary || undefined,
     appPath: windsurfApp || undefined,
-    version: windsurfBinary ? 'Detected' : windsurfApp ? 'Installed' : undefined,
+    version: undefined,
     detectedAt: now,
   };
 
+  for (const provider of Object.values(providers)) provider.platform = process.platform;
   return providers;
 }
 
@@ -360,39 +421,62 @@ function detectRuntimes() {
 // Native Folder Picker on macOS using AppleScript
 function pickFolderNative(prompt, startingDir) {
   if (process.platform === 'darwin') {
-    const cleanPrompt = (prompt || 'Select Project Location').replace(/["\\]/g, '');
+    const asAppleString = (value) => `"${String(value).replace(/[\\"\r\n]/g, (c) => ({ '\\': '\\\\', '"': '\\"', '\r': ' ', '\n': ' ' })[c])}"`;
+    const cleanPrompt = asAppleString((prompt || 'Select Project Location').slice(0, 120));
     const defaultClause =
       startingDir && fs.existsSync(startingDir)
-        ? `default location POSIX file "${startingDir.replace(/["\\]/g, '')}"`
+        ? `default location POSIX file ${asAppleString(fs.realpathSync(startingDir))}`
         : `default location (path to desktop folder)`;
-    const appleScript = `POSIX path of (choose folder with prompt "${cleanPrompt}" ${defaultClause})`;
+    const appleScript = `POSIX path of (choose folder with prompt ${cleanPrompt} ${defaultClause})`;
 
-    try {
-      const out = execSync(`osascript -e '${appleScript.replace(/'/g, "'\\''")}'`, {
-        encoding: 'utf8',
-        timeout: 120000,
-      }).trim();
+    return new Promise((resolve) => {
+      let stdout = '';
+      let stderr = '';
+      const child = spawn('osascript', ['-e', appleScript], { stdio: ['ignore', 'pipe', 'pipe'] });
+      const timeout = setTimeout(() => {
+        child.kill('SIGTERM');
+        resolve({ success: false, error: 'Folder selection timed out. Reopen the folder picker and choose a directory.' });
+      }, 120_000);
+      child.stdout.setEncoding('utf8').on('data', (chunk) => { stdout += chunk; });
+      child.stderr.setEncoding('utf8').on('data', (chunk) => { stderr += chunk; });
+      child.on('error', () => {
+        clearTimeout(timeout);
+        resolve({ success: false, error: 'Folder selection failed.' });
+      });
+      child.on('close', (code) => {
+        clearTimeout(timeout);
+        if (code !== 0) {
+          const cancelled = stderr.includes('User canceled') || stderr.includes('-128');
+          resolve(cancelled ? { success: false, cancelled: true } : { success: false, error: 'Folder selection failed.' });
+          return;
+        }
 
-      const cleanPath = out.replace(/\/+$/, '') || '/';
-      const validation = validateProjectPath(cleanPath);
-      if (!validation.valid) {
-        return { success: false, error: validation.error };
-      }
+        try {
+          const cleanPath = stdout.trim().replace(/\/+$/, '') || '/';
+          if (!fs.existsSync(cleanPath) || !fs.statSync(cleanPath).isDirectory()) {
+            resolve({ success: false, error: 'Selected location is not a directory.' });
+            return;
+          }
+          const canonical = fs.realpathSync(cleanPath);
+          if (canonical === path.parse(canonical).root || canonical === os.homedir()) {
+            resolve({ success: false, error: 'Select a project subdirectory rather than a filesystem or home root.' });
+            return;
+          }
+          approvedDirectories.add(canonical);
+          const validation = validateProjectPath(cleanPath);
+          if (!validation.valid) {
+            approvedDirectories.delete(canonical);
+            resolve({ success: false, error: validation.error });
+            return;
+          }
 
-      writeAuditLog('PICK_FOLDER_SUCCESS', { path: cleanPath });
-      return {
-        success: true,
-        path: cleanPath,
-        isGitRepo: validation.isGitRepo,
-        exists: true,
-      };
-    } catch (err) {
-      const msg = err.message || '';
-      if (msg.includes('User canceled') || msg.includes('-128')) {
-        return { success: false, cancelled: true, message: 'User cancelled folder selection.' };
-      }
-      return { success: false, error: msg };
-    }
+          writeAuditLog('PICK_FOLDER_SUCCESS');
+          resolve({ success: true, path: cleanPath, isGitRepo: validation.isGitRepo, exists: true });
+        } catch {
+          resolve({ success: false, error: 'Folder selection failed.' });
+        }
+      });
+    });
   }
 
   return {
@@ -410,9 +494,9 @@ function inspectProject(projectPath) {
 
   const resolved = validation.resolvedPath;
   const isGitRepo = fs.existsSync(path.join(resolved, '.git'));
-  const packageJsonPath = path.join(resolved, 'package.json');
-  const reqTxtPath = path.join(resolved, 'requirements.txt');
-  const pyprojectPath = path.join(resolved, 'pyproject.toml');
+  const packageJsonPath = resolveProjectFile(resolved, 'package.json');
+  const reqTxtPath = resolveProjectFile(resolved, 'requirements.txt');
+  const pyprojectPath = resolveProjectFile(resolved, 'pyproject.toml');
 
   let hasPackageJson = fs.existsSync(packageJsonPath);
   let packageJson = undefined;
@@ -455,6 +539,12 @@ function inspectProject(projectPath) {
     detectedLanguage = 'python';
     detectedFramework = 'python';
     detectedPackageManager = 'pip';
+  } else if (!hasPackageJson && fs.existsSync(path.join(resolved, 'index.html'))) {
+    // Plain HTML/CSS/JS projects have no manifest, but are still inspectable
+    // existing projects and must not be presented as an unknown React setup.
+    detectedLanguage = 'html-css';
+    detectedFramework = 'static';
+    detectedPackageManager = 'none';
   }
 
   let fileCount = 0;
@@ -521,10 +611,11 @@ function createProjectDirectory(parentDir, folderName) {
 
   try {
     fs.mkdirSync(destPath, { mode: 0o755, recursive: false });
-    writeAuditLog('CREATE_PROJECT_DIR', { projectPath: destPath });
+    approvedDirectories.add(fs.realpathSync(destPath));
+    writeAuditLog('CREATE_PROJECT_DIR');
     return { success: true, projectPath: destPath };
-  } catch (err) {
-    return { success: false, error: `Failed to create directory: ${err.message}` };
+  } catch {
+    return { success: false, error: 'Failed to create directory.' };
   }
 }
 
@@ -536,6 +627,7 @@ function initializeTemplateFiles(projectPath, templateId, projectName, initGit) 
   }
 
   const targetDir = validation.resolvedPath;
+  if (fs.readdirSync(targetDir).length !== 0) return { success: false, error: 'Project folder must be empty before initializing a template.' };
   const safeName = (projectName || path.basename(targetDir)).replace(/[^a-zA-Z0-9_.-]/g, '-');
   const createdFiles = [];
 
@@ -783,7 +875,7 @@ function initializeTemplateFiles(projectPath, templateId, projectName, initGit) 
     }
   }
 
-  writeAuditLog('INIT_TEMPLATE', { projectPath: targetDir, template: templateId, files: createdFiles });
+  writeAuditLog('INIT_TEMPLATE', { template: templateId, fileCount: createdFiles.length });
   return { success: true, createdFiles, template: templateId };
 }
 
@@ -795,7 +887,10 @@ function runDependencyInstall(projectPath, packageManager, packages = []) {
   }
 
   const targetDir = validation.resolvedPath;
-  const pm = packageManager || 'npm';
+  const pm = ['npm', 'pnpm', 'yarn', 'pip'].includes(packageManager) ? packageManager : 'npm';
+  if (!Array.isArray(packages) || packages.length > 100 || packages.some((name) => typeof name !== 'string' || !/^(?!-)[A-Za-z0-9@._/+:-]{1,120}$/.test(name))) {
+    return { success: false, error: 'Invalid dependency list.' };
+  }
 
   let bin;
   let args;
@@ -826,7 +921,7 @@ function runDependencyInstall(projectPath, packageManager, packages = []) {
   const stderr = (run.stderr || '').trim();
   const exitCode = run.status ?? (run.error ? 1 : 0);
 
-  writeAuditLog('INSTALL_DEPS', { projectPath: targetDir, packageManager: pm, exitCode });
+  writeAuditLog('INSTALL_DEPS', { packageManager: pm, exitCode });
 
   return {
     success: exitCode === 0,
@@ -871,10 +966,16 @@ function verifyProjectEnv(projectPath, validationCommand) {
   let buildCheckPassed = true;
   let buildOutput = '';
 
-  if (validationCommand && manifestExists) {
+  const validationCommands = {
+    'npm run build': ['npm', ['run', 'build']],
+    'npm test': ['npm', ['test']],
+    'pnpm build': ['pnpm', ['build']],
+    'pnpm test': ['pnpm', ['test']],
+  };
+  if (validationCommand && manifestExists && validationCommands[validationCommand]) {
     try {
-      const parts = validationCommand.split(' ');
-      const check = spawnSync(parts[0], parts.slice(1), {
+      const [executable, args] = validationCommands[validationCommand];
+      const check = spawnSync(executable, args, {
         cwd: targetDir,
         encoding: 'utf8',
         timeout: 60000,
@@ -884,11 +985,11 @@ function verifyProjectEnv(projectPath, validationCommand) {
       if (!buildCheckPassed) {
         issues.push(`Validation command "${validationCommand}" returned exit code ${check.status}`);
       }
-    } catch (err) {
+    } catch {
       buildCheckPassed = false;
-      issues.push(`Failed to run validation command: ${err.message}`);
+      issues.push('Failed to run validation command.');
     }
-  }
+  } else if (validationCommand) { buildCheckPassed = false; issues.push('Requested validation is not in the supported command list.'); }
 
   const isReady = directoryExists && manifestExists && issues.length === 0;
 
@@ -910,26 +1011,24 @@ function verifyProjectEnv(projectPath, validationCommand) {
 function checkSecurity(req, res) {
   // 1. Origin header validation
   const origin = req.headers['origin'];
-  const allowedOrigins = [
-    'http://localhost:3000',
-    'http://localhost:3001',
-    'http://127.0.0.1:3000',
-    'http://127.0.0.1:3001',
-  ];
+  const allowedOrigins = new Set(['http://localhost:5173', 'http://127.0.0.1:5173', 'http://localhost:3000', 'http://127.0.0.1:3000']);
+  const host = req.headers.host || '';
+  if (!new Set([`127.0.0.1:${PORT}`, `localhost:${PORT}`]).has(host)) {
+    res.writeHead(403, { 'Content-Type': 'application/json' }); res.end(JSON.stringify({ error: 'Forbidden.' })); return false;
+  }
 
   if (origin) {
-    if (allowedOrigins.includes(origin)) {
+    if (allowedOrigins.has(origin)) {
       res.setHeader('Access-Control-Allow-Origin', origin);
       res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
       res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
-      res.setHeader('Access-Control-Allow-Credentials', 'true');
     } else {
       res.writeHead(403, { 'Content-Type': 'application/json' });
-      res.end(JSON.stringify({ error: `Origin "${origin}" is not authorized to access Deadline bridge.` }));
+      res.end(JSON.stringify({ error: 'Forbidden.' }));
       return false;
     }
-  } else {
-    res.setHeader('Access-Control-Allow-Origin', '*');
+  } else if (req.url !== '/health') {
+    res.writeHead(403, { 'Content-Type': 'application/json' }); res.end(JSON.stringify({ error: 'Origin required.' })); return false;
   }
 
   // Preflight OPTIONS handling
@@ -951,7 +1050,8 @@ function checkSecurity(req, res) {
   const authHeader = req.headers['authorization'] || '';
   const token = authHeader.replace(/^Bearer\s+/i, '').trim();
 
-  if (!token || token !== pairingToken) {
+  const a = Buffer.from(token); const b = Buffer.from(pairingToken);
+  if (!token || a.length !== b.length || !crypto.timingSafeEqual(a, b)) {
     res.writeHead(401, { 'Content-Type': 'application/json' });
     res.end(JSON.stringify({ error: 'Unauthorized: Invalid or missing pairing token.' }));
     return false;
@@ -963,12 +1063,14 @@ function checkSecurity(req, res) {
 // Read JSON Body helper
 function parseBody(req) {
   return new Promise((resolve, reject) => {
-    let raw = '';
+    if (!(req.headers['content-type'] || '').toLowerCase().startsWith('application/json')) return reject(new Error('Invalid request.'));
+    let raw = ''; let size = 0;
     req.on('data', (chunk) => {
-      raw += chunk;
-      if (raw.length > 5 * 1024 * 1024) {
-        reject(new Error('Payload too large'));
+      size += chunk.length;
+      if (size > MAX_BODY_BYTES) {
+        reject(new Error('Payload too large')); req.destroy(); return;
       }
+      raw += chunk;
     });
     req.on('end', () => {
       if (!raw.trim()) return resolve({});
@@ -997,10 +1099,6 @@ const server = http.createServer(async (req, res) => {
     res.end(
       JSON.stringify({
         status: 'ok',
-        version: '1.0.0-phase3',
-        port: PORT,
-        host: HOST,
-        platform: process.platform,
       })
     );
     return;
@@ -1009,20 +1107,24 @@ const server = http.createServer(async (req, res) => {
   // 2. POST /auth/pair
   if (pathname === '/auth/pair' && req.method === 'POST') {
     try {
-      const body = await parseBody(req);
-      const token = (body.token || '').trim();
-      if (token === pairingToken) {
-        writeAuditLog('PAIR_SUCCESS', { remoteAddress: req.socket.remoteAddress });
+      await parseBody(req);
+      const token = (req.headers.authorization || '').replace(/^Bearer\s+/i, '').trim();
+      const ip = req.socket.remoteAddress || 'unknown';
+      const bucket = pairFailures.get(ip) || { count: 0, until: 0 };
+      if (Date.now() < bucket.until) { res.writeHead(429, { 'Content-Type': 'application/json', 'Retry-After': String(Math.ceil((bucket.until-Date.now())/1000)) }); res.end(JSON.stringify({ success:false,error:'Pairing temporarily locked. Try again later.' })); return; }
+      const a = Buffer.from(token); const b = Buffer.from(pairingToken);
+      if (a.length === b.length && crypto.timingSafeEqual(a, b)) {
+        pairFailures.delete(ip); writeAuditLog('PAIR_SUCCESS');
         res.writeHead(200, { 'Content-Type': 'application/json' });
         res.end(JSON.stringify({ success: true, message: 'Paired successfully with Deadline Local Bridge.' }));
       } else {
-        writeAuditLog('PAIR_FAILED', { remoteAddress: req.socket.remoteAddress });
+        bucket.count++; if (bucket.count >= 5) { bucket.until = Date.now() + 60_000; bucket.count = 0; } pairFailures.set(ip, bucket); writeAuditLog('PAIR_FAILED');
         res.writeHead(401, { 'Content-Type': 'application/json' });
-        res.end(JSON.stringify({ success: false, error: 'Invalid pairing token.' }));
+        res.end(JSON.stringify({ success: false, error: 'Pairing failed.' }));
       }
-    } catch (e) {
+    } catch {
       res.writeHead(400, { 'Content-Type': 'application/json' });
-      res.end(JSON.stringify({ error: e.message }));
+      res.end(JSON.stringify({ error: 'Invalid request.' }));
     }
     return;
   }
@@ -1042,9 +1144,69 @@ const server = http.createServer(async (req, res) => {
       const validation = validateProjectPath(body.projectPath);
       res.writeHead(200, { 'Content-Type': 'application/json' });
       res.end(JSON.stringify(validation));
-    } catch (e) {
+    } catch {
       res.writeHead(400, { 'Content-Type': 'application/json' });
-      res.end(JSON.stringify({ valid: false, error: e.message }));
+      res.end(JSON.stringify({ valid: false, error: 'Invalid request.' }));
+    }
+    return;
+  }
+
+  // Explicit in-app approval fallback when the native folder chooser is unavailable.
+  if (pathname === '/workspace/approve-path' && req.method === 'POST') {
+    try {
+      const body = await parseBody(req);
+      const result = approveProjectPath(body.projectPath);
+      res.writeHead(result.valid ? 200 : 400, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify(result));
+    } catch {
+      res.writeHead(400, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ valid: false, error: 'Invalid request.' }));
+    }
+    return;
+  }
+
+  // Transcript discovery is scoped to a previously approved project folder.
+  if (pathname === '/workspace/transcripts/discover' && req.method === 'POST') {
+    try {
+      const body = await parseBody(req);
+      const validation = validateProjectPath(body.projectPath);
+      if (!validation.valid) {
+        res.writeHead(400, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ success: false, error: validation.error }));
+        return;
+      }
+      const result = discoverProjectTranscripts(validation.resolvedPath, body.providerId);
+      writeAuditLog('DISCOVER_AGENT_TRANSCRIPTS', { providerId: body.providerId, count: result.sessions.length });
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ success: true, ...result, sessions: result.sessions.map(({ path: _path, ...metadata }) => metadata) }));
+    } catch {
+      res.writeHead(400, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ success: false, error: 'Invalid transcript discovery request.' }));
+    }
+    return;
+  }
+
+  if (pathname === '/workspace/transcripts/read' && req.method === 'POST') {
+    try {
+      const body = await parseBody(req);
+      const validation = validateProjectPath(body.projectPath);
+      if (!validation.valid) {
+        res.writeHead(400, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ success: false, error: validation.error }));
+        return;
+      }
+      const result = readProjectTranscript(validation.resolvedPath, body.providerId, body.sessionId);
+      if (!result.success) {
+        res.writeHead(404, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify(result));
+        return;
+      }
+      writeAuditLog('READ_AGENT_TRANSCRIPT', { providerId: body.providerId });
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify(result));
+    } catch {
+      res.writeHead(400, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ success: false, error: 'Invalid transcript read request.' }));
     }
     return;
   }
@@ -1062,16 +1224,28 @@ const server = http.createServer(async (req, res) => {
 
       const projectPath = validation.resolvedPath;
       const targetFileName = body.fileName || 'DEADLINE_CONTEXT.md';
+      if (typeof targetFileName !== 'string' || path.basename(targetFileName) !== targetFileName || targetFileName.includes('..')) throw new Error('Invalid handoff file name.');
       const targetFilePath = path.join(projectPath, targetFileName);
+      if (fs.existsSync(targetFilePath)) {
+        res.writeHead(409, { 'Content-Type': 'application/json' }); res.end(JSON.stringify({ success: false, error: 'Handoff file already exists; refusing to overwrite it.' })); return;
+      }
 
       // Detect existing special instruction files in project
       const specialFiles = ['CLAUDE.md', '.cursorrules', 'AGENTS.md', 'GEMINI.md'];
       const detectedSpecial = specialFiles.filter((f) => fs.existsSync(path.join(projectPath, f)));
 
       const existedBefore = fs.existsSync(targetFilePath);
-      fs.writeFileSync(targetFilePath, body.content || '', 'utf8');
+      const parent = fs.realpathSync(path.dirname(targetFilePath));
+      if (parent !== projectPath || path.dirname(targetFilePath) !== projectPath) throw new Error('Invalid handoff target.');
+      const tempPath = path.join(projectPath, `.deadline-${crypto.randomBytes(8).toString('hex')}.tmp`);
+      fs.writeFileSync(tempPath, typeof body.content === 'string' ? body.content : '', { encoding: 'utf8', flag: 'wx', mode: 0o600 });
+      try {
+        fs.linkSync(tempPath, targetFilePath); // Atomic no-overwrite creation.
+      } finally {
+        fs.unlinkSync(tempPath);
+      }
 
-      writeAuditLog('PREPARE_HANDOFF', { projectPath, filePath: targetFilePath });
+      writeAuditLog('PREPARE_HANDOFF');
 
       res.writeHead(200, { 'Content-Type': 'application/json' });
       res.end(
@@ -1083,9 +1257,9 @@ const server = http.createServer(async (req, res) => {
           existingSpecialFilesDetected: detectedSpecial,
         })
       );
-    } catch (e) {
+    } catch {
       res.writeHead(500, { 'Content-Type': 'application/json' });
-      res.end(JSON.stringify({ success: false, error: e.message }));
+      res.end(JSON.stringify({ success: false, error: 'Request failed.' }));
     }
     return;
   }
@@ -1113,28 +1287,14 @@ const server = http.createServer(async (req, res) => {
         return;
       }
 
-      let launchedPid = undefined;
-      let status = 'running';
+      let status = 'launched';
       let message = '';
       let commandSummary = '';
 
-      // macOS Interactive Terminal execution for CLI coding agents (Claude Code, Codex)
-      if (process.platform === 'darwin' && body.interactive) {
-        const bin = detected.binaryPath;
-        const argString = (body.args || []).map((a) => `"${a.replace(/"/g, '\\"')}"`).join(' ');
-        const shellCmd = `cd "${projectPath.replace(/"/g, '\\"')}" && "${bin.replace(/"/g, '\\"')}" ${argString}`;
-        commandSummary = `${bin} ${argString}`;
-
-        const appleScript = `tell application "Terminal"
-          activate
-          do script "${shellCmd.replace(/"/g, '\\"')}"
-        end tell`;
-
-        const osascript = spawn('osascript', ['-e', appleScript]);
-        launchedPid = osascript.pid;
-        status = 'running';
-        message = `Launched ${providerId} in interactive Terminal at ${projectPath}`;
-      } else if (process.platform === 'darwin' && !body.interactive) {
+      if (['claude_code', 'codex'].includes(providerId)) {
+        // Detached CLI processes are not reliably trackable after bridge restart.
+        res.writeHead(501, { 'Content-Type': 'application/json' }); res.end(JSON.stringify({ success: false, error: 'Interactive CLI launch is unsupported until process tracking is available.' })); return;
+      } else if (process.platform === 'darwin') {
         // macOS GUI IDE launch (Antigravity, Cursor, VS Code, Windsurf)
         const appPath = detected.appPath;
         const bin = detected.binaryPath;
@@ -1147,31 +1307,20 @@ const server = http.createServer(async (req, res) => {
             cwd: projectPath,
           });
           child.unref();
-          launchedPid = child.pid;
-          commandSummary = `${bin} "${projectPath}"`;
+          commandSummary = `Open ${providerId} workspace`;
         } else if (appPath && fs.existsSync(appPath)) {
           const child = spawn('open', ['-a', appPath, projectPath, contextFilePath], {
             detached: true,
             stdio: 'ignore',
           });
           child.unref();
-          launchedPid = child.pid;
-          commandSummary = `open -a "${appPath}" "${projectPath}"`;
+          commandSummary = `Open ${providerId} workspace`;
         }
         status = 'externally_managed';
         message = `Opened workspace in ${providerId} at ${projectPath}`;
       } else {
         // Fallback Linux/Cross-platform spawn
-        const bin = detected.binaryPath || body.command;
-        const child = spawn(bin, body.args || [projectPath], {
-          cwd: projectPath,
-          detached: true,
-          stdio: 'ignore',
-        });
-        child.unref();
-        launchedPid = child.pid;
-        status = 'running';
-        message = `Spawned process ${launchedPid} for ${providerId}`;
+        res.writeHead(501, { 'Content-Type': 'application/json' }); res.end(JSON.stringify({ success: false, error: 'Workspace launch is unsupported on this platform.' })); return;
       }
 
       const sessionObj = {
@@ -1179,12 +1328,12 @@ const server = http.createServer(async (req, res) => {
         providerId,
         projectPath,
         startedAt: new Date().toISOString(),
-        processId: launchedPid,
+        processId: undefined,
         status,
       };
       activeSessions.set(sessionId, sessionObj);
 
-      writeAuditLog('LAUNCH_IDE', { sessionId, providerId, projectPath, pid: launchedPid });
+      writeAuditLog('OPEN_WORKSPACE', { providerId });
 
       res.writeHead(200, { 'Content-Type': 'application/json' });
       res.end(
@@ -1193,14 +1342,14 @@ const server = http.createServer(async (req, res) => {
           sessionId,
           providerId,
           status,
-          processId: launchedPid,
+          processId: undefined,
           launchCommandSummary: commandSummary,
           message,
         })
       );
-    } catch (e) {
+    } catch {
       res.writeHead(500, { 'Content-Type': 'application/json' });
-      res.end(JSON.stringify({ success: false, error: e.message }));
+      res.end(JSON.stringify({ success: false, error: 'Launch failed.' }));
     }
     return;
   }
@@ -1209,24 +1358,14 @@ const server = http.createServer(async (req, res) => {
   if (pathname.startsWith('/execute/session/') && req.method === 'GET') {
     const sessionId = pathname.replace('/execute/session/', '');
     const session = activeSessions.get(sessionId);
-    const pid = session?.processId || parseInt(url.searchParams.get('pid') || '0', 10);
-
-    let isAlive = false;
-    if (pid && pid > 0) {
-      try {
-        process.kill(pid, 0); // signal 0 tests liveness without killing
-        isAlive = true;
-      } catch {
-        isAlive = false;
-      }
-    }
+    const isAlive = false;
 
     res.writeHead(200, { 'Content-Type': 'application/json' });
     res.end(
       JSON.stringify({
         sessionId,
         isAlive,
-        status: isAlive ? session?.status || 'running' : 'completed',
+        status: isAlive ? session?.status || 'running' : session ? session.status : 'disconnected',
       })
     );
     return;
@@ -1236,9 +1375,13 @@ const server = http.createServer(async (req, res) => {
   if (pathname.startsWith('/execute/stop/') && req.method === 'POST') {
     try {
       const sessionId = pathname.replace('/execute/stop/', '');
-      const body = await parseBody(req);
+      await parseBody(req);
       const session = activeSessions.get(sessionId);
-      const pid = body.pid || session?.processId;
+      const pid = session?.processId;
+
+      if (!session || !pid) {
+        res.writeHead(409, { 'Content-Type': 'application/json' }); res.end(JSON.stringify({ success: false, stopped: false, error: 'No tracked process is available to stop.' })); return;
+      }
 
       let stopped = false;
       if (pid && pid > 0) {
@@ -1250,18 +1393,18 @@ const server = http.createServer(async (req, res) => {
         }
       }
 
-      if (session) {
+      if (session && stopped) {
         session.status = 'cancelled';
         session.endedAt = new Date().toISOString();
       }
 
-      writeAuditLog('STOP_SESSION', { sessionId, pid, stopped });
+      writeAuditLog('STOP_SESSION', { stopped });
 
       res.writeHead(200, { 'Content-Type': 'application/json' });
       res.end(JSON.stringify({ success: true, stopped }));
-    } catch (e) {
+    } catch {
       res.writeHead(500, { 'Content-Type': 'application/json' });
-      res.end(JSON.stringify({ success: false, error: e.message }));
+      res.end(JSON.stringify({ success: false, error: 'Request failed.' }));
     }
     return;
   }
@@ -1329,9 +1472,9 @@ const server = http.createServer(async (req, res) => {
           summary,
         })
       );
-    } catch (e) {
+    } catch {
       res.writeHead(500, { 'Content-Type': 'application/json' });
-      res.end(JSON.stringify({ isGitRepo: false, modifiedFiles: [], untrackedFiles: [], deletedFiles: [], totalChanges: 0, summary: e.message }));
+      res.end(JSON.stringify({ isGitRepo: false, modifiedFiles: [], untrackedFiles: [], deletedFiles: [], totalChanges: 0, summary: 'Workspace inspection failed.' }));
     }
     return;
   }
@@ -1341,16 +1484,19 @@ const server = http.createServer(async (req, res) => {
     try {
       if (fs.existsSync(AUDIT_LOG_FILE)) {
         const lines = fs.readFileSync(AUDIT_LOG_FILE, 'utf8').trim().split('\n').filter(Boolean);
-        const parsed = lines.slice(-50).map((l) => JSON.parse(l));
+        const parsed = lines.slice(-50).map((l) => {
+          const entry = JSON.parse(l);
+          return { timestamp: entry.timestamp, action: entry.action };
+        });
         res.writeHead(200, { 'Content-Type': 'application/json' });
         res.end(JSON.stringify({ logs: parsed }));
       } else {
         res.writeHead(200, { 'Content-Type': 'application/json' });
         res.end(JSON.stringify({ logs: [] }));
       }
-    } catch (e) {
+    } catch {
       res.writeHead(500, { 'Content-Type': 'application/json' });
-      res.end(JSON.stringify({ logs: [], error: e.message }));
+      res.end(JSON.stringify({ logs: [], error: 'Audit log unavailable.' }));
     }
     return;
   }
@@ -1362,9 +1508,9 @@ const server = http.createServer(async (req, res) => {
       const result = pickFolderNative(body.prompt, body.startingDirectory);
       res.writeHead(result.success ? 200 : 400, { 'Content-Type': 'application/json' });
       res.end(JSON.stringify(result));
-    } catch (e) {
+    } catch {
       res.writeHead(500, { 'Content-Type': 'application/json' });
-      res.end(JSON.stringify({ success: false, error: e.message }));
+      res.end(JSON.stringify({ success: false, error: 'Folder selection failed.' }));
     }
     return;
   }
@@ -1375,9 +1521,9 @@ const server = http.createServer(async (req, res) => {
       const runtimes = detectRuntimes();
       res.writeHead(200, { 'Content-Type': 'application/json' });
       res.end(JSON.stringify({ runtimes }));
-    } catch (e) {
+    } catch {
       res.writeHead(500, { 'Content-Type': 'application/json' });
-      res.end(JSON.stringify({ error: e.message }));
+      res.end(JSON.stringify({ error: 'Runtime detection failed.' }));
     }
     return;
   }
@@ -1389,9 +1535,9 @@ const server = http.createServer(async (req, res) => {
       const inspection = inspectProject(body.projectPath);
       res.writeHead(inspection.valid ? 200 : 400, { 'Content-Type': 'application/json' });
       res.end(JSON.stringify(inspection));
-    } catch (e) {
+    } catch {
       res.writeHead(500, { 'Content-Type': 'application/json' });
-      res.end(JSON.stringify({ valid: false, error: e.message }));
+      res.end(JSON.stringify({ valid: false, error: 'Project inspection failed.' }));
     }
     return;
   }
@@ -1403,9 +1549,9 @@ const server = http.createServer(async (req, res) => {
       const resData = createProjectDirectory(body.parentDirectory, body.folderName);
       res.writeHead(resData.success ? 200 : 400, { 'Content-Type': 'application/json' });
       res.end(JSON.stringify(resData));
-    } catch (e) {
+    } catch {
       res.writeHead(500, { 'Content-Type': 'application/json' });
-      res.end(JSON.stringify({ success: false, error: e.message }));
+      res.end(JSON.stringify({ success: false, error: 'Directory creation failed.' }));
     }
     return;
   }
@@ -1422,9 +1568,9 @@ const server = http.createServer(async (req, res) => {
       );
       res.writeHead(resData.success ? 200 : 400, { 'Content-Type': 'application/json' });
       res.end(JSON.stringify(resData));
-    } catch (e) {
+    } catch {
       res.writeHead(500, { 'Content-Type': 'application/json' });
-      res.end(JSON.stringify({ success: false, error: e.message }));
+      res.end(JSON.stringify({ success: false, error: 'Template initialization failed.' }));
     }
     return;
   }
@@ -1440,9 +1586,9 @@ const server = http.createServer(async (req, res) => {
       );
       res.writeHead(resData.success ? 200 : 400, { 'Content-Type': 'application/json' });
       res.end(JSON.stringify(resData));
-    } catch (e) {
+    } catch {
       res.writeHead(500, { 'Content-Type': 'application/json' });
-      res.end(JSON.stringify({ success: false, error: e.message }));
+      res.end(JSON.stringify({ success: false, error: 'Dependency installation failed.' }));
     }
     return;
   }
@@ -1454,9 +1600,9 @@ const server = http.createServer(async (req, res) => {
       const report = verifyProjectEnv(body.projectPath, body.validationCommand);
       res.writeHead(200, { 'Content-Type': 'application/json' });
       res.end(JSON.stringify(report));
-    } catch (e) {
+    } catch {
       res.writeHead(500, { 'Content-Type': 'application/json' });
-      res.end(JSON.stringify({ isReady: false, error: e.message }));
+      res.end(JSON.stringify({ isReady: false, error: 'Environment verification failed.' }));
     }
     return;
   }
@@ -1467,17 +1613,7 @@ const server = http.createServer(async (req, res) => {
 });
 
 server.listen(PORT, HOST, () => {
-  console.info(`
-==========================================================
-⚡ Deadline Local Execution Bridge Online
-==========================================================
-Host:              ${HOST}
-Port:              ${PORT}
-Pairing Secret:    ${pairingToken}
-Audit Log:         ${AUDIT_LOG_FILE}
-Security:          Loopback-only, Origin-protected, 256-bit token
-==========================================================
-`);
+  console.info(`Deadline Local Bridge listening on loopback port ${PORT}.`);
   writeAuditLog('BRIDGE_STARTUP', { host: HOST, port: PORT });
 });
 

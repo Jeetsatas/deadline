@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [Unreleased]
+
+### Changed
+- Reworked the project README and contributor/security guidance to describe the current local-first app accurately.
+- Updated CI to validate on supported Node.js 20 and 22 lines with read-only repository permissions.
+- Added GitHub issue forms and a pull request template.
+- Removed the unused environment example that suggested unsupported cloud storage configuration.
+
 ## [0.1.0-alpha] - 2026-11-12
 
 ### Milestone Release: Product Experience & Prototype Architecture

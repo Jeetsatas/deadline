@@ -9,11 +9,12 @@ import {
   AlertTriangle,
   PlayCircle,
   Plus,
-  Flame,
   Activity as ActivityIcon,
   ArrowRight,
   Target,
   Sparkles,
+  Image as ImageIcon,
+  Film,
 } from 'lucide-react';
 
 export const Dashboard: React.FC = () => {
@@ -45,16 +46,16 @@ export const Dashboard: React.FC = () => {
   return (
     <div className="space-y-8 max-w-7xl mx-auto pb-12 animate-fade-in text-left">
       {/* Welcome & Philosophy Banner */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 p-6 rounded-2xl border border-border bg-gradient-to-r from-card via-card to-secondary/30 shadow-sm">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-6 p-8 sm:p-10 border border-[#1a2129] bg-[#1a2129] text-white">
         <div className="space-y-1.5">
-          <div className="inline-flex items-center gap-2 px-2.5 py-0.5 rounded-full text-xs font-semibold bg-orange-500/10 text-orange-600 dark:text-orange-400 border border-orange-500/20">
-            <Flame className="h-3.5 w-3.5" />
-            <span>Execution Protocol Active</span>
+          <div className="inline-flex items-center gap-2 text-[11px] font-bold uppercase tracking-[0.14em] text-white/65">
+            <Target className="h-3.5 w-3.5 text-blue-400" />
+            <span>Your work, in focus</span>
           </div>
-          <h1 className="text-2xl sm:text-3xl font-bold tracking-tight text-foreground">
+          <h1 className="text-3xl sm:text-4xl font-bold tracking-tight text-white">
             Work. Build. Deliver.
           </h1>
-          <p className="text-xs sm:text-sm text-muted-foreground max-w-2xl">
+          <p className="text-sm text-white/70 max-w-2xl">
             "The output matters more than the activity." Keep moving toward tangible deliverables before time runs out.
           </p>
         </div>
@@ -64,7 +65,12 @@ export const Dashboard: React.FC = () => {
           <Button variant="primary" size="md" onClick={() => openCreateModal()}>
             <Plus className="h-4 w-4 mr-1.5" /> New Deadline
           </Button>
-          <Button variant="outline" size="md" onClick={() => setActiveTab('upcoming')}>
+          <Button
+            variant="outline"
+            size="md"
+            className="border-white/30 text-white hover:border-white/50 hover:bg-white/10 hover:text-white"
+            onClick={() => setActiveTab('upcoming')}
+          >
             View Upcoming
           </Button>
         </div>
@@ -73,7 +79,7 @@ export const Dashboard: React.FC = () => {
       {/* A. Statistics Overview Cards */}
       <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3 sm:gap-4">
         {/* Total Deadlines */}
-        <div className="p-4 rounded-xl border border-border bg-card shadow-sm space-y-1">
+        <div className="p-4 border border-border border-t-2 border-t-primary bg-card space-y-1">
           <span className="text-[11px] font-medium text-muted-foreground uppercase tracking-wider block">
             Total Deadlines
           </span>
@@ -88,7 +94,7 @@ export const Dashboard: React.FC = () => {
           <span className="text-[11px] font-medium text-muted-foreground uppercase tracking-wider block">
             Active Work
           </span>
-          <div className="text-2xl font-bold font-mono tracking-tight text-primary">
+          <div className="text-2xl font-bold tracking-tight text-primary">
             {statistics.active}
           </div>
           <span className="text-[10px] text-muted-foreground">In active execution</span>
@@ -96,7 +102,7 @@ export const Dashboard: React.FC = () => {
 
         {/* Due Today */}
         <div
-          className={`p-4 rounded-xl border shadow-sm space-y-1 ${
+          className={`p-4 border space-y-1 ${
             statistics.dueToday > 0
               ? 'bg-amber-500/5 border-amber-500/30'
               : 'border-border bg-card'
@@ -112,7 +118,7 @@ export const Dashboard: React.FC = () => {
         </div>
 
         {/* Due Tomorrow */}
-        <div className="p-4 rounded-xl border border-border bg-card shadow-sm space-y-1">
+        <div className="p-4 border border-border bg-card space-y-1">
           <span className="text-[11px] font-medium text-muted-foreground uppercase tracking-wider block">
             Due Tomorrow
           </span>
@@ -124,7 +130,7 @@ export const Dashboard: React.FC = () => {
 
         {/* Overdue */}
         <div
-          className={`p-4 rounded-xl border shadow-sm space-y-1 ${
+          className={`p-4 border space-y-1 ${
             statistics.overdue > 0
               ? 'bg-red-500/5 border-red-500/30'
               : 'border-border bg-card'
@@ -140,7 +146,7 @@ export const Dashboard: React.FC = () => {
         </div>
 
         {/* Completed */}
-        <div className="p-4 rounded-xl border border-border bg-card shadow-sm space-y-1">
+        <div className="p-4 border border-border bg-card space-y-1">
           <span className="text-[11px] font-medium text-muted-foreground uppercase tracking-wider block">
             Delivered
           </span>
@@ -150,6 +156,34 @@ export const Dashboard: React.FC = () => {
           <span className="text-[10px] text-muted-foreground font-mono">{statistics.deliveryRate}% delivery rate</span>
         </div>
       </div>
+
+      {/* Media creation roadmap */}
+      <section aria-label="Coming soon" className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+        <div className="flex items-center gap-3 border border-border bg-card p-4">
+          <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary">
+            <ImageIcon className="h-5 w-5" />
+          </div>
+          <div className="min-w-0">
+            <div className="flex flex-wrap items-center gap-2">
+              <h2 className="text-sm font-semibold text-foreground">Image creation</h2>
+              <span className="rounded-full border border-border px-2 py-0.5 text-[10px] font-medium text-muted-foreground">Coming soon</span>
+            </div>
+            <p className="mt-1 text-xs text-muted-foreground">Create project visuals directly in Deadline.</p>
+          </div>
+        </div>
+        <div className="flex items-center gap-3 border border-border bg-card p-4">
+          <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary">
+            <Film className="h-5 w-5" />
+          </div>
+          <div className="min-w-0">
+            <div className="flex flex-wrap items-center gap-2">
+              <h2 className="text-sm font-semibold text-foreground">Video creation</h2>
+              <span className="rounded-full border border-border px-2 py-0.5 text-[10px] font-medium text-muted-foreground">Coming soon</span>
+            </div>
+            <p className="mt-1 text-xs text-muted-foreground">Create and manage project videos in one place.</p>
+          </div>
+        </div>
+      </section>
 
       {/* Critical Attention Banner if any */}
       {criticalItems.length > 0 && (

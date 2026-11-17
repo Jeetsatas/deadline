@@ -23,18 +23,22 @@ export class LocalStorageAdapter implements IStorageAdapter {
   private setStorageItem<T>(key: string, value: T): void {
     try {
       localStorage.setItem(key, JSON.stringify(value));
-    } catch (e) {
-      console.error(`[LocalStorageAdapter] Failed to set key "${key}"`, e);
+    } catch {
+      throw new Error(`Browser storage could not save ${key}. Free some storage space and try again.`);
     }
   }
 
   async getDeadlines(): Promise<Deadline[]> {
     const raw = this.getStorageItem<Deadline[] | null>(STORAGE_KEYS.DEADLINES, null);
     if (!raw) {
-      this.setStorageItem(STORAGE_KEYS.DEADLINES, initialDeadlines);
-      return initialDeadlines;
+      this.setStorageItem(STORAGE_KEYS.DEADLINES, []);
+      return [];
     }
-    return raw;
+    // Remove only the app's known demo fixtures, preserving records created by users.
+    const demoIds = new Set(initialDeadlines.map((deadline) => deadline.id));
+    const userDeadlines = raw.filter((deadline) => !demoIds.has(deadline.id));
+    if (userDeadlines.length !== raw.length) this.setStorageItem(STORAGE_KEYS.DEADLINES, userDeadlines);
+    return userDeadlines;
   }
 
   async getDeadline(id: string): Promise<Deadline | null> {
@@ -97,10 +101,13 @@ export class LocalStorageAdapter implements IStorageAdapter {
   async getActivities(): Promise<Activity[]> {
     const raw = this.getStorageItem<Activity[] | null>(STORAGE_KEYS.ACTIVITIES, null);
     if (!raw) {
-      this.setStorageItem(STORAGE_KEYS.ACTIVITIES, initialActivities);
-      return initialActivities;
+      this.setStorageItem(STORAGE_KEYS.ACTIVITIES, []);
+      return [];
     }
-    return raw;
+    const demoIds = new Set(initialActivities.map((activity) => activity.id));
+    const userActivities = raw.filter((activity) => !demoIds.has(activity.id));
+    if (userActivities.length !== raw.length) this.setStorageItem(STORAGE_KEYS.ACTIVITIES, userActivities);
+    return userActivities;
   }
 
   async addActivity(activity: Activity): Promise<Activity> {

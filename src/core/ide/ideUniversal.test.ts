@@ -114,10 +114,12 @@ describe('Phase 3 Universal IDE Integration & Execution Engine', () => {
 
       const caps = IDECapabilityResolver.resolveCapabilities('claude_code', detection);
       expect(caps.installationDetection).toBe('supported');
-      expect(caps.interactiveAgentExecution).toBe('supported');
-      expect(caps.terminalLaunch).toBe('supported');
-      expect(caps.contextFileHandoff).toBe('supported');
-      expect(caps.changedFileInspection).toBe('supported');
+      expect(caps.interactiveAgentExecution).toBe('unsupported');
+      expect(caps.terminalLaunch).toBe('unsupported');
+      expect(caps.processTracking).toBe('unsupported');
+      expect(caps.executionStatusMonitoring).toBe('unsupported');
+      expect(caps.contextFileHandoff).toBe('not_yet_verified');
+      expect(caps.changedFileInspection).toBe('not_yet_verified');
     });
 
     it('resolves uninstalled provider capabilities honestly as not_detected or requires_setup', () => {
@@ -143,7 +145,7 @@ describe('Phase 3 Universal IDE Integration & Execution Engine', () => {
       };
 
       const caps = IDECapabilityResolver.resolveCapabilities('vscode', detection);
-      expect(caps.workspaceOpening).toBe('supported');
+      expect(caps.workspaceOpening).toBe('not_yet_verified');
       expect(caps.interactiveAgentExecution).toBe('unsupported');
     });
   });
@@ -251,6 +253,8 @@ describe('Phase 3 Universal IDE Integration & Execution Engine', () => {
           totalChanges: 2,
           summary: '2 changed file(s)',
         }),
+        discoverTranscripts: vi.fn().mockResolvedValue({ sessions: [] }),
+        readTranscript: vi.fn().mockResolvedValue({ success: false, error: 'Not found' }),
         pickFolder: vi.fn().mockResolvedValue({
           success: true,
           path: '/Users/apple/Desktop/Projects',
@@ -425,10 +429,9 @@ describe('Phase 3 Universal IDE Integration & Execution Engine', () => {
       const client = new LocalBridgeClient(4488);
       expect(client.getPairingToken()).toBeNull();
 
-      client.setPairingToken('00e901de26fe44ca7874cedcf4a9433a6b805b06f593c03fdcc26b54ec43bb77');
-      expect(client.getPairingToken()).toBe(
-        '00e901de26fe44ca7874cedcf4a9433a6b805b06f593c03fdcc26b54ec43bb77'
-      );
+      const ephemeralToken = 'test-only-ephemeral-pairing-token';
+      client.setPairingToken(ephemeralToken);
+      expect(client.getPairingToken()).toBe(ephemeralToken);
 
       client.setPairingToken(null);
       expect(client.getPairingToken()).toBeNull();

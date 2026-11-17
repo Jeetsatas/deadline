@@ -8,7 +8,7 @@ export type ToolCategory =
   | 'utilities'
   | 'writing';
 
-export type ProcessingMode = 'browser_local' | 'local_bridge' | 'ai_assisted';
+export type ProcessingMode = 'browser_local' | 'local_bridge' | 'ai_assisted' | 'external_api';
 
 export interface ToolDefinition {
   id: string;

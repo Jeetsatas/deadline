@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { Deadline } from '@/types';
 import { useDeadlineStore } from '@/store/useDeadlineStore';
 import { ideProviderRegistry } from '@/core/ide/IDEProviderRegistry';
@@ -70,6 +70,7 @@ export const IDEExecutionSection: React.FC<IDEExecutionSectionProps> = ({
   const [showPairModal, setShowPairModal] = useState(false);
   const [isPairing, setIsPairing] = useState(false);
   const [pairError, setPairError] = useState<string | null>(null);
+  const pairingFileInput = useRef<HTMLInputElement>(null);
 
   const activeSession = activeExecutionSessions[deadline.id];
   const changes = workspaceChanges[deadline.id];
@@ -112,6 +113,33 @@ export const IDEExecutionSection: React.FC<IDEExecutionSectionProps> = ({
   };
 
   // Handle validating project path
+  const handleApprovePath = async () => {
+    setIsValidatingPath(true);
+    setPathValidationStatus(null);
+    try {
+      const trimmed = projectPathInput.replace(/[\r\n]+/g, '');
+      const res = await fetch(`http://127.0.0.1:${bridgePort}/workspace/approve-path`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${pairingToken || ''}`,
+        },
+        body: JSON.stringify({ projectPath: trimmed }),
+      });
+      const data = await res.json();
+      if (res.ok && data.valid) {
+        setPathValidationStatus({ valid: true, isGitRepo: data.isGitRepo });
+        setSelectedProjectPath(data.resolvedPath || trimmed);
+      } else {
+        setPathValidationStatus({ valid: false, error: data.error || 'Could not approve this directory.' });
+      }
+    } catch (e) {
+      setPathValidationStatus({ valid: false, error: (e as Error).message || 'Failed to reach local bridge' });
+    } finally {
+      setIsValidatingPath(false);
+    }
+  };
+
   const handleValidatePath = async () => {
     setIsValidatingPath(true);
     setPathValidationStatus(null);
@@ -161,6 +189,29 @@ export const IDEExecutionSection: React.FC<IDEExecutionSectionProps> = ({
     }
   };
 
+  const handlePairFile = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    event.target.value = '';
+    if (!file) return;
+    setPairError(null);
+    setIsPairing(true);
+    try {
+      const auth = JSON.parse(await file.text()) as { token?: unknown };
+      const token = typeof auth.token === 'string' ? auth.token.trim() : '';
+      if (!/^[a-f\d]{64}$/i.test(token)) {
+        throw new Error('The selected file does not contain a valid 256-bit bridge token.');
+      }
+      const ok = await pairBridge(token, bridgePort);
+      if (!ok) throw new Error('Pairing failed. Check that this file belongs to the running bridge.');
+      setCustomTokenInput('');
+      setShowPairModal(false);
+    } catch (err) {
+      setPairError((err as Error).message || 'Could not read the bridge auth file.');
+    } finally {
+      setIsPairing(false);
+    }
+  };
+
   // Launch session
   const handleLaunch = async () => {
     try {
@@ -203,7 +254,7 @@ export const IDEExecutionSection: React.FC<IDEExecutionSectionProps> = ({
               </Badge>
             </div>
             <p className="text-[11px] text-muted-foreground mt-0.5">
-              Secure loopback daemon executing agent handoffs and tool environments with cryptographic authentication.
+              Local companion for approved project folders. It opens editor workspaces; Deadline cannot confirm editor or agent process state.
             </p>
           </div>
         </div>
@@ -259,6 +310,9 @@ export const IDEExecutionSection: React.FC<IDEExecutionSectionProps> = ({
             const isSelected = selectedIDEProviderId === provider.id;
             const detection = detectedIDEs[provider.id];
             const isInstalled = Boolean(detection?.isInstalled);
+            const limitation = ['claude_code', 'codex'].includes(provider.id)
+              ? 'Direct CLI agent launch and process tracking are unavailable.'
+              : 'Workspace opening is available on macOS; agent process status is not tracked.';
 
             return (
               <div
@@ -298,10 +352,11 @@ export const IDEExecutionSection: React.FC<IDEExecutionSectionProps> = ({
                 <p className="text-[11px] text-muted-foreground leading-relaxed line-clamp-2 mb-3">
                   {provider.metadata.description}
                 </p>
+                <p className="text-[10px] text-amber-600 mb-2">{limitation}</p>
 
                 <div className="pt-2 border-t border-border/60 flex items-center justify-between text-[10px] text-muted-foreground font-mono">
                   <span className="truncate max-w-[150px]">
-                    {isInstalled ? detection?.version || 'Ready' : 'Requires install'}
+                    {isInstalled ? detection?.version || 'Version unavailable' : 'Requires install'}
                   </span>
                   <a
                     href={provider.metadata.docsUrl}
@@ -389,6 +444,17 @@ export const IDEExecutionSection: React.FC<IDEExecutionSectionProps> = ({
               type="button"
               variant="outline"
               size="sm"
+              onClick={handleApprovePath}
+              isLoading={isValidatingPath}
+              className="text-xs cursor-pointer shrink-0"
+              title="Approve the exact directory shown in this field for this paired bridge session"
+            >
+              Approve folder
+            </Button>
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
               onClick={handleValidatePath}
               isLoading={isValidatingPath}
               className="text-xs cursor-pointer shrink-0"
@@ -403,7 +469,7 @@ export const IDEExecutionSection: React.FC<IDEExecutionSectionProps> = ({
             </p>
           )}
           <p className="text-[11px] text-muted-foreground">
-            A canonical handoff file (<span className="font-mono text-foreground font-semibold">DEADLINE_CONTEXT.md</span>) will be safely generated inside this directory with task requirements, milestones, and deliverable targets.
+            Approve the exact path above to let the paired local bridge inspect project files and saved agent transcripts. A canonical handoff file (<span className="font-mono text-foreground font-semibold">DEADLINE_CONTEXT.md</span>) is generated only when you initialize a project.
           </p>
         </div>
 
@@ -437,18 +503,23 @@ export const IDEExecutionSection: React.FC<IDEExecutionSectionProps> = ({
                       : 'bg-amber-500/10 text-amber-500 border-amber-500/30'
                   }`}
                 >
-                  {selectedDetection?.isInstalled ? 'Ready to Execute' : 'Setup Required'}
+                {selectedDetection?.isInstalled ? 'Installed' : 'Setup Required'}
                 </Badge>
               </div>
               <p className="text-[11px] text-muted-foreground">
                 {selectedDetection?.isInstalled
-                  ? `Launch command: ${selectedProvider.metadata.defaultBinaryNames[0]} in ${projectPathInput}`
-                  : `Please install ${selectedProvider.metadata.displayName} to launch directly from Deadline.`}
+                  ? (['claude_code', 'codex'].includes(selectedProvider.id)
+                    ? 'CLI agent launch is disabled because Deadline cannot track its process.'
+                    : selectedDetection.platform === 'darwin'
+                      ? 'Deadline can open this workspace. Editor and agent process status will remain untracked.'
+                      : 'Workspace opening is unsupported on this platform.')
+                  : `Please install ${selectedProvider.metadata.displayName} to open its workspace from Deadline.`}
               </p>
             </div>
 
             <div>
               {selectedDetection?.isInstalled ? (
+                selectedDetection.platform === 'darwin' && !['claude_code', 'codex'].includes(selectedProvider.id) ? (
                 <Button
                   type="button"
                   variant="primary"
@@ -461,6 +532,7 @@ export const IDEExecutionSection: React.FC<IDEExecutionSectionProps> = ({
                   <Play className="h-4 w-4 mr-1.5 fill-current" />
                   {selectedProvider.metadata.primaryActionLabel}
                 </Button>
+                ) : <span className="text-[11px] text-muted-foreground">Launch unavailable</span>
               ) : (
                 <a
                   href={selectedProvider.metadata.installGuideUrl}
@@ -696,6 +768,24 @@ export const IDEExecutionSection: React.FC<IDEExecutionSectionProps> = ({
             <p className="text-xs text-muted-foreground leading-relaxed">
               Enter the 256-bit cryptographic pairing secret generated by your local bridge daemon (saved at <span className="font-mono text-foreground font-semibold">~/.deadline/bridge-auth.json</span>).
             </p>
+
+            <input
+              ref={pairingFileInput}
+              type="file"
+              accept="application/json,.json"
+              className="hidden"
+              onChange={handlePairFile}
+            />
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              className="w-full"
+              disabled={isPairing}
+              onClick={() => pairingFileInput.current?.click()}
+            >
+              <Folder className="mr-2 h-4 w-4" /> Choose bridge-auth.json
+            </Button>
 
             <form onSubmit={handlePair} className="space-y-3">
               <div className="space-y-1">

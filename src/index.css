@@ -5,49 +5,53 @@
 @layer base {
   :root {
     --background: 0 0% 100%;
-    --foreground: 240 10% 3.9%;
+    --foreground: 0 0% 15.3%;
     --card: 0 0% 100%;
-    --card-foreground: 240 10% 3.9%;
+    --card-foreground: 0 0% 15.3%;
     --popover: 0 0% 100%;
-    --popover-foreground: 240 10% 3.9%;
-    --primary: 24 95% 53%; /* Deadline Orange */
+    --popover-foreground: 0 0% 15.3%;
+    --primary: 215 77% 47%;
+    --primary-active: 214 94% 37%;
     --primary-foreground: 0 0% 100%;
-    --primary-subtle: 24 95% 95%;
-    --secondary: 240 4.8% 95.9%;
-    --secondary-foreground: 240 5.9% 10%;
-    --muted: 240 4.8% 95.9%;
-    --muted-foreground: 240 3.8% 46.1%;
-    --accent: 240 4.8% 95.9%;
-    --accent-foreground: 240 5.9% 10%;
+    --primary-subtle: 215 77% 96%;
+    --secondary: 0 0% 97.3%;
+    --secondary-foreground: 0 0% 15.3%;
+    --muted: 0 0% 97.3%;
+    --muted-foreground: 0 0% 42%;
+    --accent: 0 0% 92.2%;
+    --accent-foreground: 0 0% 15.3%;
     --destructive: 0 84.2% 60.2%;
     --destructive-foreground: 0 0% 98%;
-    --border: 240 5.9% 90%;
-    --input: 240 5.9% 90%;
-    --ring: 24 95% 53%;
-    --radius: 0.5rem;
+    --border: 0 0% 90.2%;
+    --input: 0 0% 90.2%;
+    --ring: 215 77% 47%;
+    --surface-dark: 214 22% 13%;
+    --radius: 0.125rem;
   }
 
   .dark {
-    --background: 240 10% 3.9%;
-    --foreground: 0 0% 98%;
-    --card: 240 10% 5.2%;
+    --background: 214 22% 13%;
+    --foreground: 0 0% 97%;
+    --card: 214 20% 17%;
     --card-foreground: 0 0% 98%;
-    --popover: 240 10% 5.2%;
+    --popover: 214 20% 17%;
     --popover-foreground: 0 0% 98%;
-    --primary: 24 95% 53%; /* Deadline Orange */
+    --primary: 215 77% 54%;
+    --primary-active: 214 90% 44%;
     --primary-foreground: 0 0% 100%;
-    --primary-subtle: 24 95% 12%;
-    --secondary: 240 3.7% 12%;
+    --primary-subtle: 215 55% 23%;
+    --secondary: 214 18% 21%;
     --secondary-foreground: 0 0% 98%;
-    --muted: 240 3.7% 12%;
-    --muted-foreground: 240 5% 64.9%;
-    --accent: 240 3.7% 15.9%;
+    --muted: 214 18% 21%;
+    --muted-foreground: 0 0% 72%;
+    --accent: 214 16% 25%;
     --accent-foreground: 0 0% 98%;
     --destructive: 0 62.8% 45%;
     --destructive-foreground: 0 0% 98%;
-    --border: 240 3.7% 15.9%;
-    --input: 240 3.7% 15.9%;
-    --ring: 24 95% 53%;
+    --border: 214 14% 29%;
+    --input: 214 14% 29%;
+    --ring: 215 77% 54%;
+    --surface-dark: 214 24% 10%;
   }
 
   * {
@@ -57,10 +61,32 @@
   body {
     @apply bg-background text-foreground font-sans;
     font-feature-settings: "rlig" 1, "calt" 1;
+    font-weight: 400;
+    letter-spacing: 0;
+  }
+
+  h1, h2, h3, h4, h5, h6 {
+    color: hsl(var(--foreground));
+    font-weight: 700;
+    letter-spacing: 0;
+  }
+
+  input, select, textarea {
+    border-radius: 0;
+    background-color: hsl(var(--background));
   }
 }
 
-/* Custom scrollbar for sleek developer feel */
+/* Restrained square geometry for a clear, data-first workspace. */
+.rounded-2xl { border-radius: 0; }
+.rounded-xl { border-radius: 2px; }
+.rounded-lg { border-radius: 4px; }
+.rounded-md { border-radius: 4px; }
+.rounded-sm { border-radius: 2px; }
+.rounded { border-radius: 0; }
+.shadow-xs, .shadow-sm { box-shadow: none; }
+
+/* Custom scrollbar */
 ::-webkit-scrollbar {
   width: 6px;
   height: 6px;
@@ -70,7 +96,7 @@
 }
 ::-webkit-scrollbar-thumb {
   background: hsl(var(--border));
-  border-radius: 9999px;
+  border-radius: 0;
 }
 ::-webkit-scrollbar-thumb:hover {
   background: hsl(var(--muted-foreground) / 0.5);

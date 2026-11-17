@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useRef, useState } from 'react';
 import { ToolDefinition } from '../types/ToolTypes';
 import { useDeadlineStore } from '@/store/useDeadlineStore';
 import { Button } from '@/components/ui/Button';
@@ -10,6 +10,7 @@ import {
   Check,
   ShieldCheck,
 } from 'lucide-react';
+import { saveVaultFile, deleteVaultFile } from '@/services/storage/VaultFileStore';
 
 interface ToolWorkspaceShellProps {
   tool: ToolDefinition;
@@ -35,6 +36,9 @@ export const ToolWorkspaceShell: React.FC<ToolWorkspaceShellProps> = ({
   const [showAttachModal, setShowAttachModal] = useState(false);
   const [selectedDeadlineId, setSelectedDeadlineId] = useState(deadlines[0]?.id || '');
   const [attachSuccess, setAttachSuccess] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [saveError, setSaveError] = useState<string | null>(null);
+  const lastSaved = useRef<{ blob: Blob; deadlineId: string } | null>(null);
 
   const Icon = tool.icon;
 
@@ -53,38 +57,50 @@ export const ToolWorkspaceShell: React.FC<ToolWorkspaceShellProps> = ({
     setTimeout(() => setDownloadSuccess(false), 2500);
   };
 
-  const handleSaveToVault = async () => {
-    if (!outputBlob) return;
-    // Find or fallback to primary deadline
-    const targetDeadline = deadlines.find((d) => d.id === selectedDeadlineId) || deadlines[0];
+  const handleSaveToVault = async (): Promise<boolean> => {
+    if (!outputBlob || saving) return false;
+    const targetDeadline = deadlines.find((d) => d.id === selectedDeadlineId);
     if (!targetDeadline) {
-      alert('Please create at least one deadline to store vault items.');
-      return;
+      setSaveError('Select a deadline before saving this file.');
+      return false;
     }
-
-    await submitFinalDeliverable(targetDeadline.id, {
+    if (lastSaved.current?.blob === outputBlob && lastSaved.current.deadlineId === targetDeadline.id) return true;
+    setSaving(true); setSaveError(null);
+    const id = `vault_${globalThis.crypto.randomUUID()}`;
+    const priorUri = targetDeadline.finalDeliverable?.resourceUri;
+    try {
+      await saveVaultFile(id, outputBlob, outputFilename);
+      await submitFinalDeliverable(targetDeadline.id, {
       title: outputFilename,
       expectedOutput: targetDeadline.expectedOutput || 'Productivity tool output',
       summary: outputSummary,
       deliverableType: targetDeadline.deliverableType || 'other',
       submissionFormat: 'file_ref',
-      resourceUri: `local://${outputFilename}`,
-      status: 'accepted',
+      resourceUri: `vault://${id}`,
+      status: 'submitted',
       fileMetadata: {
         filename: outputFilename,
         filesize: `${(outputBlob.size / 1024).toFixed(1)} KB`,
         filetype: outputBlob.type || 'application/octet-stream',
       },
-      verificationNotes: `Processed locally with ${tool.name} in browser memory.`,
-    });
+      verificationNotes: `Saved in this browser with ${tool.name}. No external verification has occurred.`,
+      });
+      if (priorUri?.startsWith('vault://')) await deleteVaultFile(priorUri.replace(/^vault:\/\//, '')).catch(() => undefined);
+    lastSaved.current = { blob: outputBlob, deadlineId: targetDeadline.id };
 
     setSaveVaultSuccess(true);
     setTimeout(() => setSaveVaultSuccess(false), 3000);
+    return true;
+    } catch (error) {
+      await deleteVaultFile(id).catch(() => undefined);
+      setSaveError((error as Error).message || 'Could not save the file to the Vault.');
+      return false;
+    } finally { setSaving(false); }
   };
 
   const handleAttachToDeadline = async () => {
     if (!outputBlob || !selectedDeadlineId) return;
-    await handleSaveToVault();
+    if (!(await handleSaveToVault())) return;
     setShowAttachModal(false);
     setAttachSuccess(true);
     setTimeout(() => setAttachSuccess(false), 3000);
@@ -105,7 +121,7 @@ export const ToolWorkspaceShell: React.FC<ToolWorkspaceShellProps> = ({
 
         <div className="flex items-center gap-2">
           <span className="font-mono text-[10px] px-2 py-0.5 rounded-full bg-emerald-500/10 text-emerald-500 border border-emerald-500/20 font-semibold flex items-center gap-1">
-            <ShieldCheck className="h-3 w-3" /> 100% Local Browser Processing
+            <ShieldCheck className="h-3 w-3" /> Processing location varies by tool
           </span>
         </div>
       </div>
@@ -151,8 +167,8 @@ export const ToolWorkspaceShell: React.FC<ToolWorkspaceShellProps> = ({
             <Button
               variant="outline"
               size="sm"
-              onClick={handleSaveToVault}
-              disabled={saveVaultSuccess}
+              onClick={() => setShowAttachModal(true)}
+              disabled={saveVaultSuccess || saving}
             >
               {saveVaultSuccess ? (
                 <>
@@ -186,6 +202,7 @@ export const ToolWorkspaceShell: React.FC<ToolWorkspaceShellProps> = ({
       </div>
 
       {/* Main Interactive Tool Body */}
+      {saveError && <p role="alert" className="text-xs text-red-500">{saveError}</p>}
       <div className="p-6 rounded-2xl border border-border bg-card shadow-xs space-y-6">
         {children}
       </div>
@@ -198,7 +215,7 @@ export const ToolWorkspaceShell: React.FC<ToolWorkspaceShellProps> = ({
               Attach Output to Deadline
             </h3>
             <p className="text-xs text-muted-foreground">
-              Select an existing deadline workspace to link this output as a completed deliverable.
+              Select the deadline that will receive this saved file.
             </p>
 
             <div className="space-y-1.5">
@@ -224,8 +241,8 @@ export const ToolWorkspaceShell: React.FC<ToolWorkspaceShellProps> = ({
               >
                 Cancel
               </Button>
-              <Button variant="primary" size="sm" onClick={handleAttachToDeadline}>
-                Confirm & Attach
+              <Button variant="primary" size="sm" onClick={handleAttachToDeadline} disabled={saving || deadlines.length === 0}>
+                Save to Selected Deadline
               </Button>
             </div>
           </div>

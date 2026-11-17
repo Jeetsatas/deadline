@@ -154,7 +154,11 @@ export class IDEExecutionService {
     const nowIso = new Date().toISOString();
     let updatedStatus = session.status;
 
-    if (!statusResult.isAlive && session.status === 'running') {
+    if (statusResult.status === 'disconnected') {
+      updatedStatus = 'disconnected';
+    } else if (statusResult.status === 'externally_managed') {
+      updatedStatus = 'externally_managed';
+    } else if (!statusResult.isAlive && session.status === 'running') {
       updatedStatus = 'awaiting_verification';
     } else if (statusResult.isAlive && session.status === 'launched') {
       updatedStatus = 'running';

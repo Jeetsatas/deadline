@@ -193,4 +193,4 @@ Deadline's Phase 6 introduces an integrated, universal productivity toolkit desi
 - [x] **Zero Telemetry Default:** User files uploaded to any Stage 1 tool are processed in local volatile RAM and never transmitted across the network.
 - [x] **Safe Memory Lifecycle:** All `URL.createObjectURL` references are tracked and explicitly revoked with `URL.revokeObjectURL` upon download or session termination.
 - [x] **No Secret Storage:** Passwords, tokens, or confidential document content processed in utilities are never written to disk or audit logs.
-- [x] **Vault Interoperability:** Any generated output can be saved directly to Deadline's **Deliverable Vault** as a verified project output with full provenance.
+- [x] **Vault Interoperability:** Tool outputs are saved as submitted deliverables when the browser confirms durable file storage; no external verification is implied.

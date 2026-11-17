@@ -18,14 +18,14 @@ export class IDECapabilityResolver {
 
     const baseCapabilities: IDECapabilities = {
       installationDetection: 'supported',
-      versionDetection: isInstalled ? 'supported' : 'not_detected',
-      workspaceOpening: isInstalled ? 'supported' : 'not_detected',
-      contextFileHandoff: isInstalled ? 'supported' : 'not_detected',
+      versionDetection: detection?.version ? 'supported' : isInstalled ? 'unsupported' : 'not_detected',
+      workspaceOpening: isInstalled ? 'not_yet_verified' : 'not_detected',
+      contextFileHandoff: isInstalled ? 'not_yet_verified' : 'not_detected',
       terminalLaunch: 'unsupported',
       interactiveAgentExecution: 'unsupported',
       processTracking: 'unsupported',
       sessionCancellation: 'unsupported',
-      changedFileInspection: isInstalled ? 'supported' : 'not_detected',
+      changedFileInspection: isInstalled ? 'not_yet_verified' : 'not_detected',
       executionStatusMonitoring: 'unsupported',
     };
 
@@ -33,31 +33,23 @@ export class IDECapabilityResolver {
       case 'claude_code':
         return {
           ...baseCapabilities,
-          terminalLaunch: isInstalled ? 'supported' : 'not_detected',
-          interactiveAgentExecution: isInstalled ? 'supported' : 'not_detected',
-          processTracking: isInstalled ? 'supported' : 'not_detected',
-          sessionCancellation: isInstalled ? 'supported' : 'not_detected',
-          executionStatusMonitoring: isInstalled ? 'supported' : 'not_detected',
+          terminalLaunch: isInstalled ? 'unsupported' : 'not_detected',
+          interactiveAgentExecution: isInstalled ? 'unsupported' : 'not_detected',
         };
 
       case 'codex':
         return {
           ...baseCapabilities,
-          terminalLaunch: isInstalled ? 'supported' : 'not_detected',
-          interactiveAgentExecution: isInstalled ? 'supported' : 'not_detected',
-          processTracking: isInstalled ? 'supported' : 'not_detected',
-          sessionCancellation: isInstalled ? 'supported' : 'not_detected',
-          executionStatusMonitoring: isInstalled ? 'supported' : 'not_detected',
+          terminalLaunch: isInstalled ? 'unsupported' : 'not_detected',
+          interactiveAgentExecution: isInstalled ? 'unsupported' : 'not_detected',
         };
 
       case 'antigravity':
         return {
           ...baseCapabilities,
           terminalLaunch: 'unsupported', // Opens native app window
-          interactiveAgentExecution: isInstalled ? 'supported' : 'not_detected',
-          processTracking: isInstalled ? 'supported' : 'not_detected',
-          sessionCancellation: isInstalled ? 'supported' : 'not_detected',
-          executionStatusMonitoring: isInstalled ? 'supported' : 'not_detected',
+          interactiveAgentExecution: isInstalled ? 'unsupported' : 'not_detected',
+          executionStatusMonitoring: 'unsupported',
         };
 
       case 'cursor':
@@ -65,7 +57,7 @@ export class IDECapabilityResolver {
           ...baseCapabilities,
           terminalLaunch: 'unsupported',
           interactiveAgentExecution: 'requires_setup', // Opens Cursor with context; agent execution is user-triggered in-editor
-          processTracking: isInstalled ? 'supported' : 'not_detected',
+          processTracking: isInstalled ? 'unsupported' : 'not_detected',
           sessionCancellation: 'unsupported',
           executionStatusMonitoring: 'unsupported', // External IDE editor session
         };
@@ -75,7 +67,7 @@ export class IDECapabilityResolver {
           ...baseCapabilities,
           terminalLaunch: 'unsupported',
           interactiveAgentExecution: 'unsupported', // Standard editor handoff
-          processTracking: isInstalled ? 'supported' : 'not_detected',
+          processTracking: isInstalled ? 'unsupported' : 'not_detected',
           sessionCancellation: 'unsupported',
           executionStatusMonitoring: 'unsupported',
         };
@@ -85,7 +77,7 @@ export class IDECapabilityResolver {
           ...baseCapabilities,
           terminalLaunch: 'unsupported',
           interactiveAgentExecution: 'requires_setup', // AI IDE Cascade agent is triggered in-editor
-          processTracking: isInstalled ? 'supported' : 'not_detected',
+          processTracking: isInstalled ? 'unsupported' : 'not_detected',
           sessionCancellation: 'unsupported',
           executionStatusMonitoring: 'unsupported',
         };
@@ -105,9 +97,9 @@ export class IDECapabilityResolver {
 
     switch (providerId) {
       case 'claude_code':
-        return 'Start Working in Claude Code';
+        return 'CLI launch unavailable';
       case 'codex':
-        return 'Start Working in OpenAI Codex';
+        return 'CLI launch unavailable';
       case 'antigravity':
         return 'Open in Google Antigravity';
       case 'cursor':

@@ -1,21 +1,17 @@
 # Security Policy
 
-## Supported Versions
+## Supported versions
 
-| Version | Supported          |
-| ------- | ------------------ |
-| 0.1.x   | :white_check_mark: |
+Security fixes are currently intended for the latest version on the default branch. Alpha releases may change without a compatibility guarantee.
 
-## Reporting a Vulnerability
+## Report a vulnerability privately
 
-The Deadline team takes security seriously. If you discover a security vulnerability within Deadline, please send an email to **jeet@deadline.dev**.
+Please do not publish an unpatched vulnerability, exploit details, credentials, pairing tokens, or private IDE transcripts in a public issue.
 
-Please include:
-1. A description of the vulnerability and its potential impact.
-2. Steps to reproduce the issue or a proof-of-concept.
-3. Any suggested remediation steps if known.
+If this repository is hosted on GitHub and **Private vulnerability reporting** is enabled, use the repository's **Security → Report a vulnerability** feature. If it is not enabled, contact the maintainers through the private contact method listed on the repository hosting page. Include affected version or commit, impact, and clear reproduction steps. Do not include real secrets; use placeholders.
 
-We kindly request that you do not disclose the vulnerability publicly until we have had an opportunity to address it and publish a fix.
+This project has no published response-time or remediation-time guarantee. Maintainers will coordinate disclosure after investigating a report.
 
-We will acknowledge receipt of your vulnerability report within 48 hours and work with you to coordinate a resolution.
+## Local data and credentials
 
+Deadline stores app records in browser local storage. AI provider keys are held in browser session memory by the app and should not be pasted into public reports. The optional bridge uses a local pairing secret stored in `~/.deadline/bridge-auth.json`; keep it private and keep the bridge bound to loopback.

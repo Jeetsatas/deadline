@@ -44,6 +44,7 @@ import { projectInitializationService } from '@/core/project/ProjectInitializati
 export type NavigationTab =
   | 'overview'
   | 'dashboard'
+  | 'crisis-intelligence'
   | 'deadlines'
   | 'my-deadlines'
   | 'upcoming'
@@ -121,6 +122,7 @@ interface DeadlineStoreState {
   loadInitialData: () => Promise<void>;
   createDeadline: (deadline: Omit<Deadline, 'id' | 'createdAt' | 'updatedAt'>) => Promise<Deadline>;
   updateDeadline: (id: string, updates: Partial<Deadline>) => Promise<Deadline>;
+  updateCrisisNotes: (id: string, crisisImplementationNotes: string) => Promise<void>;
   deleteDeadline: (id: string) => Promise<void>;
 
   // Actions - Workspace Execution Operations
@@ -142,6 +144,7 @@ interface DeadlineStoreState {
   setFilter: (updates: Partial<DeadlineFilter>) => void;
   resetFilter: () => void;
   updateUserPreferences: (theme: 'dark' | 'light' | 'system') => Promise<void>;
+  updateSoundPreference: (enabled: boolean) => Promise<void>;
   resetToSampleData: () => Promise<void>;
   exportData: () => Promise<string>;
   importData: (json: string) => Promise<boolean>;
@@ -226,10 +229,7 @@ export const useDeadlineStore = create<DeadlineStoreState>((set, get) => ({
   // Phase 3 Universal IDE Integration Initial State
   bridgeStatus: 'disconnected',
   bridgePort: 4488,
-  pairingToken:
-    typeof window !== 'undefined'
-      ? localStorage.getItem('deadline_bridge_token') || '00e901de26fe44ca7874cedcf4a9433a6b805b06f593c03fdcc26b54ec43bb77'
-      : null,
+  pairingToken: null,
   detectedIDEs: {},
   ideCapabilities: {},
   isDetectingIDEs: false,
@@ -493,6 +493,13 @@ export const useDeadlineStore = create<DeadlineStoreState>((set, get) => ({
     return updated;
   },
 
+  updateCrisisNotes: async (id, crisisImplementationNotes) => {
+    const updated = await storageService.updateDeadline(id, { crisisImplementationNotes });
+    set((state) => ({
+      deadlines: state.deadlines.map((deadline) => deadline.id === id ? updated : deadline),
+    }));
+  },
+
   deleteDeadline: async (id) => {
     const target = get().deadlines.find((d) => d.id === id);
     await storageService.deleteDeadline(id);
@@ -744,7 +751,7 @@ export const useDeadlineStore = create<DeadlineStoreState>((set, get) => ({
       title: `Submitted final deliverable for "${target.title}"`,
       description: `Deliverable: "${finalDeliv.title}" via ${finalDeliv.submissionFormat} (${finalDeliv.resourceUri})`,
       timestamp: nowIso,
-    });
+    }).catch(() => undefined);
 
     const [updatedDeadlines, updatedActivities] = await Promise.all([
       storageService.getDeadlines(),
@@ -792,12 +799,13 @@ export const useDeadlineStore = create<DeadlineStoreState>((set, get) => ({
   },
 
   updateUserPreferences: async (theme) => {
+    const preferences = get().user?.preferences;
     const updatedUser = await storageService.updateUser({
       preferences: {
+        emailAlerts: preferences?.emailAlerts ?? true,
+        compactView: preferences?.compactView ?? false,
+        soundEnabled: preferences?.soundEnabled ?? true,
         theme,
-        emailAlerts: true,
-        compactView: false,
-        soundEnabled: true,
       },
     });
 
@@ -816,6 +824,15 @@ export const useDeadlineStore = create<DeadlineStoreState>((set, get) => ({
       }
     }
 
+    set({ user: updatedUser });
+  },
+
+  updateSoundPreference: async (enabled) => {
+    const preferences = get().user?.preferences;
+    if (!preferences) return;
+    const updatedUser = await storageService.updateUser({
+      preferences: { ...preferences, soundEnabled: enabled },
+    });
     set({ user: updatedUser });
   },
 
@@ -1301,13 +1318,11 @@ export const useDeadlineStore = create<DeadlineStoreState>((set, get) => ({
 
   checkBridgeConnection: async (tokenOverride?: string) => {
     const port = get().bridgePort;
-    const token =
-      tokenOverride ||
-      get().pairingToken ||
-      (typeof window !== 'undefined'
-        ? localStorage.getItem('deadline_bridge_token') ||
-          '00e901de26fe44ca7874cedcf4a9433a6b805b06f593c03fdcc26b54ec43bb77'
-        : '00e901de26fe44ca7874cedcf4a9433a6b805b06f593c03fdcc26b54ec43bb77');
+    const token = tokenOverride || get().pairingToken;
+    if (!token) {
+      set({ bridgeStatus: 'unauthorized' });
+      return false;
+    }
 
     localBridgeClient.setPort(port);
     localBridgeClient.setPairingToken(token);
@@ -1322,16 +1337,9 @@ export const useDeadlineStore = create<DeadlineStoreState>((set, get) => ({
     // Attempt pairing
     const isPaired = await localBridgeClient.pair(token);
     if (!isPaired) {
+      localBridgeClient.setPairingToken(null);
       set({ bridgeStatus: 'unauthorized' });
       return false;
-    }
-
-    if (typeof window !== 'undefined') {
-      try {
-        localStorage.setItem('deadline_bridge_token', token);
-      } catch {
-        // Ignore
-      }
     }
 
     set({ bridgeStatus: 'connected', pairingToken: token });
@@ -1343,18 +1351,16 @@ export const useDeadlineStore = create<DeadlineStoreState>((set, get) => ({
 
   pairBridge: async (token: string, port = 4488) => {
     set({ bridgePort: port, pairingToken: token.trim() });
-    return await get().checkBridgeConnection(token.trim());
+    const paired = await get().checkBridgeConnection(token.trim());
+    if (!paired) {
+      localBridgeClient.setPairingToken(null);
+      set({ pairingToken: null });
+    }
+    return paired;
   },
 
   disconnectBridge: () => {
     localBridgeClient.setPairingToken(null);
-    if (typeof window !== 'undefined') {
-      try {
-        localStorage.removeItem('deadline_bridge_token');
-      } catch {
-        // Ignore
-      }
-    }
     set({
       bridgeStatus: 'disconnected',
       pairingToken: null,

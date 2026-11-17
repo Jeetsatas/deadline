@@ -11,8 +11,10 @@ import { ToolsHub } from '@/features/tools/components/ToolsHub';
 import { AnalyticsView } from '@/components/analytics/AnalyticsView';
 import { SettingsView } from '@/components/settings/SettingsView';
 import { DeadlineWorkspace } from '@/components/workspace/DeadlineWorkspace';
+import { CrisisIntelligenceHub } from '@/components/workspace/CrisisIntelligenceHub';
 import { CreateDeadlineModal } from '@/components/deadline/CreateDeadlineModal';
 import { Loader2 } from 'lucide-react';
+import { playInteractionFeedback } from '@/lib/audio';
 
 export const App: React.FC = () => {
   const {
@@ -87,6 +89,7 @@ export const App: React.FC = () => {
         vault: 'deliverable-vault',
         deliverables: 'deliverable-vault',
         tools: 'tools',
+        'crisis-intelligence': 'crisis-intelligence',
         analytics: 'analytics',
         settings: 'settings',
       };
@@ -124,6 +127,7 @@ export const App: React.FC = () => {
         'deliverable-vault': 'deliverable-vault',
         deliverables: 'deliverable-vault',
         tools: 'tools',
+        'crisis-intelligence': 'crisis-intelligence',
         analytics: 'analytics',
         settings: 'settings',
       };
@@ -177,8 +181,19 @@ export const App: React.FC = () => {
 
   const currentDeadline = selectedDeadlineId ? selectedDeadline() : null;
 
+  const handleInteractionClick = (event: React.MouseEvent<HTMLDivElement>) => {
+    if (user?.preferences?.soundEnabled === false) return;
+    const target = event.target;
+    if (!(target instanceof Element)) return;
+    const control = target.closest(
+      'button, a[href], [role="button"], input[type="checkbox"], input[type="radio"], summary'
+    );
+    if (!(control instanceof HTMLElement) || control.hasAttribute('disabled') || control.getAttribute('aria-disabled') === 'true') return;
+    playInteractionFeedback();
+  };
+
   return (
-    <div className="flex h-screen w-screen overflow-hidden bg-background text-foreground">
+    <div className="flex h-screen w-screen overflow-hidden bg-background text-foreground" onClickCapture={handleInteractionClick}>
       {/* Desktop Persistent Collapsible Sidebar */}
       <div className="hidden lg:flex shrink-0">
         <AppSidebar
@@ -209,7 +224,7 @@ export const App: React.FC = () => {
         <Header onToggleMobileMenu={() => setIsMobileMenuOpen(!isMobileMenuOpen)} />
 
         {/* Scrollable Content Body */}
-        <main className="flex-1 overflow-y-auto px-4 sm:px-6 md:px-8 py-6">
+        <main className="flex-1 overflow-y-auto px-4 sm:px-6 md:px-8 py-8">
           {isLoading ? (
             <div className="h-full flex flex-col items-center justify-center gap-3 text-muted-foreground">
               <Loader2 className="h-6 w-6 animate-spin text-primary" />
@@ -219,6 +234,7 @@ export const App: React.FC = () => {
             <DeadlineWorkspace
               deadline={currentDeadline}
               onBack={() => selectDeadline(null)}
+              initialWorkspaceTab={activeTab === 'crisis-intelligence' ? 'crisis_intelligence' : 'execution'}
             />
           ) : (
             <>
@@ -244,6 +260,8 @@ export const App: React.FC = () => {
               )}
 
               {activeTab === 'tools' && <ToolsHub />}
+
+              {activeTab === 'crisis-intelligence' && <CrisisIntelligenceHub />}
 
               {activeTab === 'analytics' && <AnalyticsView />}
 

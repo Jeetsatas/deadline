@@ -20,7 +20,7 @@ export class CodexAdapter implements IIDEAdapter {
     displayName: 'OpenAI Codex',
     kind: 'coding_agent',
     description: 'OpenAI agentic CLI coding tool and terminal command center.',
-    primaryActionLabel: 'Start Working in OpenAI Codex',
+    primaryActionLabel: 'CLI launch unavailable',
     defaultBinaryNames: ['codex'],
     docsUrl: 'https://github.com/openai/codex',
     installGuideUrl: 'https://github.com/openai/codex#quickstart',

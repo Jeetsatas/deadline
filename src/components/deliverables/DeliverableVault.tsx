@@ -14,6 +14,7 @@ import {
   Target,
   Plus,
 } from 'lucide-react';
+import { deleteVaultFile, getVaultFile, saveVaultFile } from '@/services/storage/VaultFileStore';
 
 function mapToCategory(type?: DeliverableType, format?: SubmissionFormat): DeliverableVaultCategory {
   if (type === 'software' || type === 'prototype' || format === 'repository') return 'software';
@@ -32,7 +33,35 @@ function resolveResourceType(format?: SubmissionFormat, uri?: string): 'file' | 
 }
 
 export const DeliverableVault: React.FC = () => {
-  const { deadlines, selectDeadline, openCreateModal } = useDeadlineStore();
+  const { deadlines, selectDeadline, openCreateModal, updateDeadline } = useDeadlineStore();
+  const [vaultActionError, setVaultActionError] = useState<string | null>(null);
+
+  const downloadVaultItem = async (uri: string) => {
+    try {
+      const id = uri.replace(/^vault:\/\//, '');
+      const file = await getVaultFile(id);
+      if (!file) throw new Error('The file bytes are unavailable in browser storage.');
+      const url = URL.createObjectURL(file.blob);
+      const anchor = document.createElement('a'); anchor.href = url; anchor.download = file.filename; anchor.click();
+      setTimeout(() => URL.revokeObjectURL(url), 1000);
+    } catch (error) { setVaultActionError((error as Error).message); }
+  };
+
+  const removeVaultItem = async (deadlineId: string, uri: string) => {
+    try {
+      const deadline = deadlines.find((item) => item.id === deadlineId);
+      if (!deadline?.finalDeliverable) return;
+      const id = uri.startsWith('vault://') ? uri.replace(/^vault:\/\//, '') : null;
+      const storedFile = id ? await getVaultFile(id) : null;
+      if (id) await deleteVaultFile(id);
+      try {
+        await updateDeadline(deadlineId, { finalDeliverable: undefined });
+      } catch (error) {
+        if (id && storedFile) await saveVaultFile(id, storedFile.blob, storedFile.filename).catch(() => undefined);
+        throw error;
+      }
+    } catch (error) { setVaultActionError((error as Error).message); }
+  };
 
   const [vaultSubTab, setVaultSubTab] = useState<'vault' | 'in-flight'>('vault');
   const [selectedCategory, setSelectedCategory] = useState<DeliverableVaultCategory>('all');
@@ -138,11 +167,11 @@ export const DeliverableVault: React.FC = () => {
               Deliverable Vault
             </h1>
             <span className="font-mono text-xs px-2 py-0.5 rounded-full bg-secondary text-muted-foreground font-semibold">
-              {allVaultDeliverables.length} verified outputs
+              {allVaultDeliverables.length} saved deliverables
             </span>
           </div>
           <p className="text-xs text-muted-foreground mt-0.5">
-            Centralized library of completed deliverables, code repositories, documents, and verified production outputs.
+            Browser saved files and submitted deliverable records.
           </p>
         </div>
 
@@ -175,6 +204,7 @@ export const DeliverableVault: React.FC = () => {
 
       {vaultSubTab === 'vault' ? (
         <>
+          {vaultActionError && <p role="alert" className="text-xs text-red-500">{vaultActionError}</p>}
           {/* Top Category Navigation Tabs */}
           <DeliverableCategories
             selectedCategory={selectedCategory}
@@ -224,6 +254,8 @@ export const DeliverableVault: React.FC = () => {
                   key={item.id}
                   deliverable={item}
                   onOpenWorkspace={selectDeadline}
+                  onDownload={item.resourceUri.startsWith('vault://') ? () => downloadVaultItem(item.resourceUri) : undefined}
+                  onRemove={() => removeVaultItem(item.deadlineId, item.resourceUri)}
                 />
               ))}
             </div>

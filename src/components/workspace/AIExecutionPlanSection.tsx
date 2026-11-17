@@ -325,6 +325,9 @@ export const AIExecutionPlanSection: React.FC<AIExecutionPlanSectionProps> = ({
 
         {/* Configuration Row */}
         <div className="p-4 rounded-lg bg-secondary/30 border border-border space-y-4 max-w-xl">
+          <p className="text-[11px] text-muted-foreground">
+            Generating a plan sends this deadline's description and project context to the selected provider's external API.
+          </p>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div>
               <label className="text-[11px] font-medium text-muted-foreground block mb-1">
@@ -971,6 +974,7 @@ export const AIExecutionPlanSection: React.FC<AIExecutionPlanSectionProps> = ({
               Regenerating will generate a new plan version (<span className="font-semibold text-foreground font-mono">v{(plan.version || 1) + 1}</span>).
               Your existing checklist milestones and progress will <span className="font-semibold text-foreground">not</span> be erased.
             </p>
+            <p className="text-[11px] text-muted-foreground">Regeneration sends this deadline's description and project context to the selected provider's external API.</p>
 
             <div className="space-y-3">
               <div>

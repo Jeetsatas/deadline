@@ -59,6 +59,7 @@ export interface IDEProviderMetadata {
 export interface IDEDetectionResult {
   providerId: IDEProviderId;
   isInstalled: boolean;
+  platform?: string;
   binaryPath?: string;
   version?: string;
   appPath?: string;
@@ -161,6 +162,15 @@ export interface WorkspaceChangesResult {
   summary: string;
 }
 
+export interface IDETranscriptSession {
+  id: string;
+  providerId: IDEProviderId;
+  sourceName: string;
+  startedAt: string;
+  updatedAt: string;
+  sizeBytes: number;
+}
+
 export interface ILocalBridgeClient {
   isBridgeReachable(): Promise<boolean>;
   getHealth(): Promise<{ status: string; version: string; port: number }>;
@@ -179,6 +189,8 @@ export interface ILocalBridgeClient {
   getSessionStatus(sessionId: string, pid?: number): Promise<{ isAlive: boolean; status: ExecutionSessionStatus }>;
   stopSession(sessionId: string, pid?: number): Promise<boolean>;
   inspectWorkspaceChanges(projectPath: string): Promise<WorkspaceChangesResult>;
+  discoverTranscripts(projectPath: string, providerId: IDEProviderId): Promise<{ sessions: IDETranscriptSession[]; message?: string }>;
+  readTranscript(projectPath: string, providerId: IDEProviderId, sessionId: string): Promise<{ success: boolean; transcript?: string; session?: IDETranscriptSession; error?: string }>;
   pickFolder(prompt?: string, startingDirectory?: string): Promise<{ success: boolean; path?: string; isGitRepo?: boolean; cancelled?: boolean; error?: string }>;
   getHostRuntimes(): Promise<HostRuntimes>;
   inspectProject(projectPath: string): Promise<ProjectInspectionResult>;

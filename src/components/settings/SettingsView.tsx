@@ -33,6 +33,7 @@ export const SettingsView: React.FC = () => {
   const {
     user,
     updateUserPreferences,
+    updateSoundPreference,
     resetToSampleData,
     exportData,
     importData,
@@ -112,6 +113,7 @@ export const SettingsView: React.FC = () => {
   };
 
   const currentTheme = user?.preferences?.theme || 'dark';
+  const soundEnabled = user?.preferences?.soundEnabled !== false;
 
   const sections: { id: SettingsSection; label: string; icon: React.ElementType }[] = [
     { id: 'general', label: 'General', icon: UserIcon },
@@ -190,22 +192,32 @@ export const SettingsView: React.FC = () => {
           <div className="p-6 rounded-2xl border border-border bg-card shadow-xs space-y-4">
             <h3 className="text-base font-bold text-foreground">Feedback & Audio Chimes</h3>
             <p className="text-xs text-muted-foreground">
-              Deadline plays an acoustic milestone chime and deliverable fan-fare when objectives are reached.
+              Soft interface clicks and brief device haptics, with celebratory chimes when milestones and deliverables are completed.
             </p>
             <div className="flex items-center justify-between p-3 rounded-xl bg-secondary/40 border border-border/60">
               <div className="flex items-center gap-3">
                 <Volume2 className="h-5 w-5 text-primary" />
                 <div>
-                  <span className="text-xs font-semibold text-foreground block">Execution Audio Chimes</span>
+                  <span className="text-xs font-semibold text-foreground block">Interaction feedback</span>
                   <span className="text-[11px] text-muted-foreground">
-                    Web Audio API milestone completions
+                    Soft click sound and device haptics when available
                   </span>
                 </div>
               </div>
-              <span className="font-mono text-xs px-2 py-0.5 rounded bg-emerald-500/10 text-emerald-500 font-bold">
-                Active
-              </span>
+              <button
+                type="button"
+                role="switch"
+                aria-checked={soundEnabled}
+                aria-label="Interaction feedback"
+                onClick={() => updateSoundPreference(!soundEnabled)}
+                className={`relative h-6 w-11 shrink-0 border transition-colors ${soundEnabled ? 'border-primary bg-primary' : 'border-border bg-muted'}`}
+              >
+                <span className={`absolute top-0.5 h-4 w-4 bg-white transition-transform ${soundEnabled ? 'translate-x-5' : 'translate-x-0.5'}`} />
+              </button>
             </div>
+            <p className="text-[11px] text-muted-foreground">
+              {soundEnabled ? 'Feedback is on. Turn it off any time.' : 'Feedback is off. Completion chimes are muted too.'}
+            </p>
           </div>
         </div>
       )}
@@ -402,7 +414,7 @@ export const SettingsView: React.FC = () => {
               </span>
             </div>
             <p className="text-xs text-muted-foreground mt-0.5">
-              Secure loopback daemon executing OS-level folder browsing, project scaffolding, and IDE launches.
+              Loopback companion for native folder selection, approved project setup, and editor workspace opening.
             </p>
           </div>
 
@@ -457,7 +469,7 @@ export const SettingsView: React.FC = () => {
           <div className="p-6 rounded-2xl border border-border bg-card shadow-xs space-y-4">
             <h3 className="text-base font-bold text-foreground">Backup & Data Portability</h3>
             <p className="text-xs text-muted-foreground">
-              Export all managed deadlines, approved execution plans, milestones, and deliverables to a portable JSON backup file.
+              Export deadline and deliverable metadata to JSON. Vault file bytes stay in this browser and are not included in the backup.
             </p>
             <div className="flex flex-wrap items-center gap-3">
               <Button variant="outline" size="sm" onClick={handleExport}>

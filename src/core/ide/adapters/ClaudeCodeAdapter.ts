@@ -20,7 +20,7 @@ export class ClaudeCodeAdapter implements IIDEAdapter {
     displayName: 'Claude Code',
     kind: 'coding_agent',
     description: 'Anthropic agentic CLI coding tool for agent-driven software development in terminal.',
-    primaryActionLabel: 'Start Working in Claude Code',
+    primaryActionLabel: 'CLI launch unavailable',
     defaultBinaryNames: ['claude'],
     macAppNames: ['Claude Code.app'],
     docsUrl: 'https://docs.anthropic.com/en/docs/claude-code/overview',

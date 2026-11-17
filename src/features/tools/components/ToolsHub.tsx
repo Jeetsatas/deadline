@@ -115,7 +115,7 @@ export const ToolsHub: React.FC<ToolsHubProps> = ({ initialToolId, onSelectTool 
               Your tools. Your workspace.
             </h1>
             <p className="text-sm text-muted-foreground max-w-xl">
-              Everything you need to create, edit, organize and deliver your work. Powered entirely by browser-local processing with zero server uploads.
+              Most tools process files in your browser. DOI lookup sends the DOI to Crossref; saved outputs remain in this browser's Vault.
             </p>
           </div>
 
@@ -123,8 +123,8 @@ export const ToolsHub: React.FC<ToolsHubProps> = ({ initialToolId, onSelectTool 
             <div className="p-3 bg-background/80 backdrop-blur rounded-xl border border-border text-xs flex items-center gap-2">
               <ShieldCheck className="h-4 w-4 text-emerald-500 shrink-0" />
               <div>
-                <span className="font-semibold block text-foreground">Zero Cloud Storage</span>
-                <span className="text-muted-foreground text-[11px]">Files remain 100% in local memory</span>
+                <span className="font-semibold block text-foreground">No file upload by default</span>
+                <span className="text-muted-foreground text-[11px]">Most processing is local; DOI lookup uses Crossref. Vault files use browser storage.</span>
               </div>
             </div>
           </div>

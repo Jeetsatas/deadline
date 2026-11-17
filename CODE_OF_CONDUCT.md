@@ -51,8 +51,10 @@ an individual is officially representing the community in public spaces.
 ## Enforcement
 
 Instances of abusive, harassing, or otherwise unacceptable behavior may be
-reported to the project maintainers at **jeet@deadline.dev**. All complaints will
-be reviewed and investigated promptly and fairly.
+reported privately using the contact method listed on the repository hosting
+page. If this repository is hosted on GitHub, do not use a public issue for a
+sensitive report. Maintainers are expected to review reports fairly and
+confidentially.
 
 ## Attribution
 

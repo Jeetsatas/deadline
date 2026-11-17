@@ -17,11 +17,15 @@ import {
 interface DeliverableCardProps {
   deliverable: VaultDeliverable;
   onOpenWorkspace: (deadlineId: string) => void;
+  onDownload?: () => void;
+  onRemove?: () => void;
 }
 
 export const DeliverableCard: React.FC<DeliverableCardProps> = ({
   deliverable,
   onOpenWorkspace,
+  onDownload,
+  onRemove,
 }) => {
   const [copied, setCopied] = useState(false);
 
@@ -76,7 +80,7 @@ export const DeliverableCard: React.FC<DeliverableCardProps> = ({
                 : 'bg-primary/10 text-primary border border-primary/20'
             }`}
           >
-            {deliverable.status === 'accepted' ? 'VERIFIED & ACCEPTED' : deliverable.status.toUpperCase()}
+            {deliverable.status === 'accepted' ? 'ACCEPTED' : deliverable.status.toUpperCase()}
           </span>
         </div>
 
@@ -142,6 +146,9 @@ export const DeliverableCard: React.FC<DeliverableCardProps> = ({
             {deliverable.summary}
           </p>
         )}
+        {deliverable.submissionFormat === 'file_ref' && !deliverable.resourceUri.startsWith('vault://') && (
+          <p className="text-[11px] text-amber-600">This record has no file stored in the browser Vault.</p>
+        )}
 
         {/* Verification Notes */}
         {deliverable.verificationNotes && (
@@ -169,6 +176,10 @@ export const DeliverableCard: React.FC<DeliverableCardProps> = ({
           <ArrowRight className="h-3.5 w-3.5" />
         </button>
       </div>
+      {(onDownload || onRemove) && <div className="flex gap-2">
+        {onDownload && <button type="button" onClick={onDownload} className="text-xs text-primary underline">Download file</button>}
+        {onRemove && <button type="button" onClick={onRemove} className="text-xs text-red-500 underline">Remove</button>}
+      </div>}
     </div>
   );
 };

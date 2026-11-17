@@ -6,6 +6,7 @@
  */
 
 let audioCtx: AudioContext | null = null;
+let lastInteractionAt = 0;
 
 function getAudioContext(): AudioContext | null {
   try {
@@ -21,6 +22,37 @@ function getAudioContext(): AudioContext | null {
     return audioCtx;
   } catch {
     return null;
+  }
+}
+
+/** A quiet, short click for direct user interactions (no external audio assets). */
+export function playInteractionFeedback(): void {
+  try {
+    const nowMs = Date.now();
+    if (nowMs - lastInteractionAt < 45) return;
+    lastInteractionAt = nowMs;
+
+    if (typeof navigator !== 'undefined' && 'vibrate' in navigator) {
+      navigator.vibrate?.(8);
+    }
+
+    const ctx = getAudioContext();
+    if (!ctx) return;
+
+    const now = ctx.currentTime;
+    const oscillator = ctx.createOscillator();
+    const gain = ctx.createGain();
+    oscillator.type = 'sine';
+    oscillator.frequency.setValueAtTime(620, now);
+    oscillator.frequency.exponentialRampToValueAtTime(460, now + 0.035);
+    gain.gain.setValueAtTime(0.018, now);
+    gain.gain.exponentialRampToValueAtTime(0.001, now + 0.045);
+    oscillator.connect(gain);
+    gain.connect(ctx.destination);
+    oscillator.start(now);
+    oscillator.stop(now + 0.05);
+  } catch {
+    // Ignore unsupported or blocked audio/haptics without affecting the UI.
   }
 }
 

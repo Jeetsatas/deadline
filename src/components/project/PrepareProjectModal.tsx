@@ -51,6 +51,7 @@ export const PrepareProjectModal: React.FC<PrepareProjectModalProps> = ({
 }) => {
   const {
     bridgeStatus,
+    bridgePort,
     hostRuntimes,
     detectedIDEs,
     selectedIDEProviderId,
@@ -79,6 +80,7 @@ export const PrepareProjectModal: React.FC<PrepareProjectModalProps> = ({
   );
   const [existingPath, setExistingPath] = useState<string>(selectedProjectPath || '/Users/apple/Desktop');
   const [inspectionResult, setInspectionResult] = useState<ProjectInspectionResult | null>(null);
+  const [hasInspectedExistingProject, setHasInspectedExistingProject] = useState(false);
   const [isInspecting, setIsInspecting] = useState(false);
   const [isPicking, setIsPicking] = useState(false);
   const [locationError, setLocationError] = useState<string | null>(null);
@@ -114,9 +116,9 @@ export const PrepareProjectModal: React.FC<PrepareProjectModalProps> = ({
         hostRuntimes || undefined,
         parentDir
       );
-      setConfig(recommended);
+      if (!hasInspectedExistingProject) setConfig(recommended);
     }
-  }, [isOpen, deadline, fetchHostRuntimes, parentDir, hostRuntimes]);
+  }, [isOpen, deadline, fetchHostRuntimes, parentDir, hostRuntimes, hasInspectedExistingProject]);
 
   // Destination path preview
   const destinationPath =
@@ -173,14 +175,15 @@ export const PrepareProjectModal: React.FC<PrepareProjectModalProps> = ({
     try {
       const inspection = await inspectProjectDirectory(path);
       setInspectionResult(inspection);
-      if (inspection.hasPackageJson || inspection.hasRequirementsTxt) {
+      setHasInspectedExistingProject(true);
+      if (inspection.hasPackageJson || inspection.hasRequirementsTxt || inspection.hasPyproject || inspection.detectedFramework === 'static') {
         // Adapt config to existing project
         setConfig((prev) => ({
           ...prev,
           mode: 'existing',
           projectPath: path,
           projectName: inspection.packageJson?.name || path.split('/').pop() || 'Existing-Project',
-          projectType: inspection.detectedFramework === 'react' ? 'react-vite-ts' : 'custom',
+          projectType: inspection.detectedFramework === 'react' ? 'react-vite-ts' : inspection.detectedFramework === 'static' ? 'static-web' : 'custom',
           language: inspection.detectedLanguage,
           packageManager: inspection.detectedPackageManager,
         }));
@@ -233,11 +236,13 @@ export const PrepareProjectModal: React.FC<PrepareProjectModalProps> = ({
     setInstallError(null);
     setInstallOutput('');
     try {
-      const res = await fetch(`http://127.0.0.1:4488/project/install-dependencies`, {
+      const bridgeToken = useDeadlineStore.getState().pairingToken;
+      if (!bridgeToken) throw new Error('Pair with the local bridge before installing dependencies.');
+      const res = await fetch(`http://127.0.0.1:${bridgePort}/project/install-dependencies`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          Authorization: `Bearer ${localStorage.getItem('deadline_bridge_token') || ''}`,
+          Authorization: `Bearer ${bridgeToken}`,
         },
         body: JSON.stringify({
           projectPath: destinationPath,
@@ -277,6 +282,9 @@ export const PrepareProjectModal: React.FC<PrepareProjectModalProps> = ({
 
   const selectedProvider = ideProviderRegistry.getProvider(selectedIDEProviderId);
   const selectedDetection = detectedIDEs[selectedIDEProviderId];
+  const canOpenWorkspace = Boolean(
+    selectedDetection?.isInstalled && selectedDetection.platform === 'darwin' && !['claude_code', 'codex'].includes(selectedIDEProviderId)
+  );
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-5 bg-black/70 backdrop-blur-sm animate-fade-in overflow-y-auto">
@@ -676,7 +684,10 @@ export const PrepareProjectModal: React.FC<PrepareProjectModalProps> = ({
                   <ArrowLeft className="h-4 w-4 mr-1.5" />
                   Back
                 </Button>
-                <Button type="button" variant="primary" onClick={() => setCurrentStep(3)}>
+                <Button type="button" variant="primary" onClick={() => {
+                  saveProjectConfiguration(deadline.id, config);
+                  setCurrentStep(3);
+                }}>
                   Review Initialization
                   <ArrowRight className="h-4 w-4 ml-1.5" />
                 </Button>
@@ -1033,7 +1044,7 @@ export const PrepareProjectModal: React.FC<PrepareProjectModalProps> = ({
                   Your project is ready. Start building.
                 </h3>
                 <p className="text-muted-foreground">
-                  Deadline will write the canonical <code className="text-foreground font-mono font-semibold">DEADLINE_CONTEXT.md</code> into your project and launch {selectedProvider?.metadata.displayName}.
+                  Deadline will write the canonical <code className="text-foreground font-mono font-semibold">DEADLINE_CONTEXT.md</code> into your project and open {selectedProvider?.metadata.displayName}. Agent process tracking is unavailable.
                 </p>
               </div>
 
@@ -1042,7 +1053,7 @@ export const PrepareProjectModal: React.FC<PrepareProjectModalProps> = ({
                   <div className="flex items-center justify-between">
                     <span className="font-bold text-foreground">{selectedProvider.metadata.displayName}</span>
                     <Badge variant="outline" className="text-[10px] font-mono text-emerald-500 border-emerald-500/30">
-                      {selectedDetection?.isInstalled ? 'Ready' : 'Setup Required'}
+                      {selectedDetection?.isInstalled ? 'Installed' : 'Setup Required'}
                     </Badge>
                   </div>
                   <p className="text-[11px] text-muted-foreground">
@@ -1063,7 +1074,7 @@ export const PrepareProjectModal: React.FC<PrepareProjectModalProps> = ({
                   <ArrowLeft className="h-4 w-4 mr-1.5" />
                   Review Configuration
                 </Button>
-                {selectedDetection?.isInstalled ? (
+                {canOpenWorkspace ? (
                   <Button
                     type="button"
                     variant="primary"
@@ -1076,6 +1087,8 @@ export const PrepareProjectModal: React.FC<PrepareProjectModalProps> = ({
                     <Play className="h-4 w-4 mr-1.5 fill-current" />
                     {selectedProvider?.metadata.primaryActionLabel || 'Start Working'}
                   </Button>
+                ) : selectedDetection?.isInstalled ? (
+                  <span className="text-xs text-muted-foreground">Workspace launch is unsupported for this provider or platform.</span>
                 ) : (
                   <a
                     href={selectedProvider?.metadata.installGuideUrl}
